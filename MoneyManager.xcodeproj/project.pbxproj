@@ -1,0 +1,401 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		001001000000000000000001 /* MoneyManagerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000001 /* MoneyManagerApp.swift */; };
+		001001000000000000000002 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000002 /* AppRootView.swift */; };
+		001001000000000000000003 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000003 /* AppTheme.swift */; };
+		001001000000000000000004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000004 /* Models.swift */; };
+		001001000000000000000005 /* MoneyManagerAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000005 /* MoneyManagerAPI.swift */; };
+		001001000000000000000006 /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000006 /* TokenStore.swift */; };
+		001001000000000000000007 /* MoneyManagerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000007 /* MoneyManagerStore.swift */; };
+		001001000000000000000008 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000008 /* AuthView.swift */; };
+		001001000000000000000009 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000009 /* DashboardView.swift */; };
+		001001000000000000000010 /* TransactionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000010 /* TransactionsView.swift */; };
+		001001000000000000000011 /* TransactionEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000011 /* TransactionEditorView.swift */; };
+		001001000000000000000012 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000012 /* ProfileView.swift */; };
+		001001000000000000000013 /* SharedComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000013 /* SharedComponents.swift */; };
+		001001000000000000000014 /* Formatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000014 /* Formatters.swift */; };
+		001001000000000000000015 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000015 /* ShareSheet.swift */; };
+		001002000000000000000001 /* MoneyManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002002000000000000000001 /* MoneyManagerTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		003000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 004000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 005000000000000000000001;
+			remoteInfo = MoneyManager;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		002001000000000000000001 /* MoneyManagerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyManagerApp.swift; sourceTree = "<group>"; };
+		002001000000000000000002 /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
+		002001000000000000000003 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		002001000000000000000004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		002001000000000000000005 /* MoneyManagerAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyManagerAPI.swift; sourceTree = "<group>"; };
+		002001000000000000000006 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
+		002001000000000000000007 /* MoneyManagerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyManagerStore.swift; sourceTree = "<group>"; };
+		002001000000000000000008 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		002001000000000000000009 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		002001000000000000000010 /* TransactionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionsView.swift; sourceTree = "<group>"; };
+		002001000000000000000011 /* TransactionEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionEditorView.swift; sourceTree = "<group>"; };
+		002001000000000000000012 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		002001000000000000000013 /* SharedComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedComponents.swift; sourceTree = "<group>"; };
+		002001000000000000000014 /* Formatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatters.swift; sourceTree = "<group>"; };
+		002001000000000000000015 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
+		002002000000000000000001 /* MoneyManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyManagerTests.swift; sourceTree = "<group>"; };
+		006000000000000000000001 /* MoneyManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MoneyManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		006000000000000000000002 /* MoneyManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MoneyManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		007000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		007000000000000000000002 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		008000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				008000000000000000000002 /* MoneyManager */,
+				008000000000000000000011 /* MoneyManagerTests */,
+				008000000000000000000020 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		008000000000000000000002 /* MoneyManager */ = {
+			isa = PBXGroup;
+			children = (
+				008000000000000000000003 /* App */,
+				008000000000000000000004 /* DesignSystem */,
+				008000000000000000000005 /* Models */,
+				008000000000000000000006 /* Services */,
+				008000000000000000000007 /* Store */,
+				008000000000000000000008 /* Screens */,
+				008000000000000000000009 /* Components */,
+				008000000000000000000010 /* Utilities */,
+			);
+			path = MoneyManager/Sources;
+			sourceTree = "<group>";
+		};
+		008000000000000000000003 /* App */ = {isa = PBXGroup; children = (002001000000000000000001, 002001000000000000000002); path = App; sourceTree = "<group>"; };
+		008000000000000000000004 /* DesignSystem */ = {isa = PBXGroup; children = (002001000000000000000003); path = DesignSystem; sourceTree = "<group>"; };
+		008000000000000000000005 /* Models */ = {isa = PBXGroup; children = (002001000000000000000004); path = Models; sourceTree = "<group>"; };
+		008000000000000000000006 /* Services */ = {isa = PBXGroup; children = (002001000000000000000005, 002001000000000000000006); path = Services; sourceTree = "<group>"; };
+		008000000000000000000007 /* Store */ = {isa = PBXGroup; children = (002001000000000000000007); path = Store; sourceTree = "<group>"; };
+		008000000000000000000008 /* Screens */ = {isa = PBXGroup; children = (002001000000000000000008, 002001000000000000000009, 002001000000000000000010, 002001000000000000000011, 002001000000000000000012); path = Screens; sourceTree = "<group>"; };
+		008000000000000000000009 /* Components */ = {isa = PBXGroup; children = (002001000000000000000013); path = Components; sourceTree = "<group>"; };
+		008000000000000000000010 /* Utilities */ = {isa = PBXGroup; children = (002001000000000000000014, 002001000000000000000015); path = Utilities; sourceTree = "<group>"; };
+		008000000000000000000011 /* MoneyManagerTests */ = {isa = PBXGroup; children = (002002000000000000000001); path = MoneyManagerTests; sourceTree = "<group>"; };
+		008000000000000000000020 /* Products */ = {isa = PBXGroup; children = (006000000000000000000001, 006000000000000000000002); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		005000000000000000000001 /* MoneyManager */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 009000000000000000000001 /* Build configuration list for PBXNativeTarget "MoneyManager" */;
+			buildPhases = (
+				010000000000000000000001 /* Sources */,
+				007000000000000000000001 /* Frameworks */,
+				011000000000000000000001 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = MoneyManager;
+			productName = MoneyManager;
+			productReference = 006000000000000000000001 /* MoneyManager.app */;
+			productType = "com.apple.product-type.application";
+		};
+		005000000000000000000002 /* MoneyManagerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 009000000000000000000002 /* Build configuration list for PBXNativeTarget "MoneyManagerTests" */;
+			buildPhases = (
+				010000000000000000000002 /* Sources */,
+				007000000000000000000002 /* Frameworks */,
+				011000000000000000000002 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = (
+				012000000000000000000001 /* PBXTargetDependency */,
+			);
+			name = MoneyManagerTests;
+			productName = MoneyManagerTests;
+			productReference = 006000000000000000000002 /* MoneyManagerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		004000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					005000000000000000000001 = {CreatedOnToolsVersion = 15.4;};
+					005000000000000000000002 = {CreatedOnToolsVersion = 15.4; TestTargetID = 005000000000000000000001;};
+				};
+			};
+			buildConfigurationList = 009000000000000000000003 /* Build configuration list for PBXProject "MoneyManager" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = 008000000000000000000001;
+			productRefGroup = 008000000000000000000020 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (005000000000000000000001, 005000000000000000000002);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		011000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		011000000000000000000002 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		010000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				001001000000000000000001,
+				001001000000000000000002,
+				001001000000000000000003,
+				001001000000000000000004,
+				001001000000000000000005,
+				001001000000000000000006,
+				001001000000000000000007,
+				001001000000000000000008,
+				001001000000000000000009,
+				001001000000000000000010,
+				001001000000000000000011,
+				001001000000000000000012,
+				001001000000000000000013,
+				001001000000000000000014,
+				001001000000000000000015,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		010000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (001002000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		012000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 005000000000000000000001 /* MoneyManager */; targetProxy = 003000000000000000000001 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		013000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("DEBUG=1", "$(inherited)");
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		013000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		013000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MoneyManager/Resources/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.moneymanager.ios;
+				PRODUCT_MODULE_NAME = MoneyManager;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		013000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MoneyManager/Resources/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.moneymanager.ios;
+				PRODUCT_MODULE_NAME = MoneyManager;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		013000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				PRODUCT_BUNDLE_IDENTIFIER = org.moneymanager.ios.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MoneyManager.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MoneyManager";
+			};
+			name = Debug;
+		};
+		013000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				PRODUCT_BUNDLE_IDENTIFIER = org.moneymanager.ios.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MoneyManager.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MoneyManager";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		009000000000000000000001 /* Build configuration list for PBXNativeTarget "MoneyManager" */ = {isa = XCConfigurationList; buildConfigurations = (013000000000000000000003, 013000000000000000000004); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		009000000000000000000002 /* Build configuration list for PBXNativeTarget "MoneyManagerTests" */ = {isa = XCConfigurationList; buildConfigurations = (013000000000000000000005, 013000000000000000000006); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		009000000000000000000003 /* Build configuration list for PBXProject "MoneyManager" */ = {isa = XCConfigurationList; buildConfigurations = (013000000000000000000001, 013000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = 004000000000000000000001 /* Project object */;
+}
