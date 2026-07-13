@@ -43,7 +43,7 @@ struct MetricTile: View {
                 .minimumScaleFactor(0.62)
         }
         .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, minHeight: 104, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
         .background(AppColor.surface)
         .clipShape(RoundedRectangle(cornerRadius: AppMetric.cardRadius, style: .continuous))
         .overlay {
@@ -88,6 +88,7 @@ struct FilterPill: View {
                 }
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -113,8 +114,8 @@ struct PrimaryButton: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .foregroundStyle(.white)
-            .background(AppColor.financeGreen)
+            .foregroundStyle(AppColor.primaryText)
+            .background(AppColor.filledButton)
             .clipShape(RoundedRectangle(cornerRadius: AppMetric.controlRadius, style: .continuous))
         }
         .disabled(isLoading)
@@ -157,13 +158,63 @@ struct ErrorBanner: View {
 
     var body: some View {
         if let message, !message.isEmpty {
-            Text(message)
+            Label(message, systemImage: "exclamationmark.triangle.fill")
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(AppColor.expense)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 2)
                 .accessibilityIdentifier("error-banner")
         }
+    }
+}
+
+struct MonthNavigator: View {
+    let month: String
+    let canGoNext: Bool
+    let isLoading: Bool
+    let previous: () -> Void
+    let next: () -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Button(action: previous) {
+                Image(systemName: "chevron.left")
+                    .frame(width: 32, height: 32)
+            }
+            .disabled(isLoading)
+            .accessibilityLabel("Previous month")
+
+            Spacer(minLength: 8)
+
+            Text(DateFormat.monthDisplay(month))
+                .font(.headline)
+                .foregroundStyle(AppColor.nearBlack)
+                .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: 8)
+
+            Button(action: next) {
+                Image(systemName: "chevron.right")
+                    .frame(width: 32, height: 32)
+            }
+            .disabled(isLoading || !canGoNext)
+            .accessibilityLabel("Next month")
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct AppLogo: View {
+    var size: CGFloat = 72
+
+    var body: some View {
+        Image("BrandMark")
+            .renderingMode(.original)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.23, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 

@@ -1,11 +1,12 @@
 import Foundation
 
 enum MoneyFormat {
-    static let display: NumberFormatter = {
+    private static let apiDisplay: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
+        formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 2
+        formatter.usesGroupingSeparator = false
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter
     }()
@@ -14,15 +15,51 @@ enum MoneyFormat {
         Decimal(string: value, locale: Locale(identifier: "en_US_POSIX")) ?? .zero
     }
 
-    static func amount(_ value: Decimal, currency: String = "EUR") -> String {
-        let number = NSDecimalNumber(decimal: value)
-        let formatted = display.string(from: number) ?? "0.00"
-        return "\(symbol(for: currency))\(formatted)"
+    static func inputDecimal(from value: String, locale: Locale = .current) -> Decimal? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let localeSeparator = locale.decimalSeparator ?? "."
+        let fallbackSeparator = localeSeparator == "," ? "." : ","
+        let containsLocaleSeparator = trimmed.contains(localeSeparator)
+        let containsFallbackSeparator = trimmed.contains(fallbackSeparator)
+        guard !(containsLocaleSeparator && containsFallbackSeparator) else { return nil }
+
+        let normalized: String
+        if containsLocaleSeparator {
+            normalized = trimmed.replacingOccurrences(of: localeSeparator, with: ".")
+        } else if containsFallbackSeparator {
+            normalized = trimmed.replacingOccurrences(of: fallbackSeparator, with: ".")
+        } else {
+            normalized = trimmed
+        }
+
+        guard normalized.range(
+            of: #"^[0-9]+(?:\.[0-9]{1,2})?$"#,
+            options: .regularExpression
+        ) != nil else { return nil }
+
+        return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
     }
 
-    static func signed(_ value: Decimal, currency: String = "EUR") -> String {
+    static func apiAmount(_ value: Decimal) -> String {
+        apiDisplay.string(from: NSDecimalNumber(decimal: value)) ?? NSDecimalNumber(decimal: value).stringValue
+    }
+
+    static func amount(_ value: Decimal, currency: String = "EUR", locale: Locale = .current) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = currency.uppercased()
+        formatter.locale = locale
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        let number = NSDecimalNumber(decimal: value)
+        return formatter.string(from: number) ?? "\(symbol(for: currency))\(apiAmount(value))"
+    }
+
+    static func signed(_ value: Decimal, currency: String = "EUR", locale: Locale = .current) -> String {
         let sign = value >= .zero ? "+" : "-"
-        return "\(sign)\(amount(abs(value), currency: currency))"
+        return "\(sign)\(amount(abs(value), currency: currency, locale: locale))"
     }
 
     static func symbol(for currency: String) -> String {
@@ -55,16 +92,16 @@ enum DateFormat {
     static let displayMonth: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMMM yyyy"
+        formatter.locale = .current
+        formatter.setLocalizedDateFormatFromTemplate("MMMM yyyy")
         return formatter
     }()
 
     static let dayHeader: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE, MMM d"
+        formatter.locale = .current
+        formatter.setLocalizedDateFormatFromTemplate("EEE MMM d")
         return formatter
     }()
 
@@ -91,6 +128,15 @@ enum DateFormat {
 
     static func firstDayDate(of month: String) -> Date {
         isoDate.date(from: firstDay(of: month)) ?? Date()
+    }
+
+    static func lastDayDate(of month: String) -> Date {
+        guard
+            let firstDay = monthKey.date(from: month),
+            let nextMonth = Calendar.current.date(byAdding: .month, value: 1, to: firstDay),
+            let lastDay = Calendar.current.date(byAdding: .day, value: -1, to: nextMonth)
+        else { return Date() }
+        return lastDay
     }
 
     static func apiDate(_ value: String) -> Date? {

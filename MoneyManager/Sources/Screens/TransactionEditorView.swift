@@ -21,7 +21,7 @@ struct TransactionEditorView: View {
                 Section("Details") {
                     LabeledContent("Amount") {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text("EUR")
+                            Text(store.summary?.currency ?? "EUR")
                                 .foregroundStyle(AppColor.financeGreen)
                             TextField("0.00", text: $store.formAmount)
                                 .keyboardType(.decimalPad)
@@ -29,9 +29,17 @@ struct TransactionEditorView: View {
                         }
                     }
 
-                    CategorySelectorCard(store: store)
+                    TextField("Description (optional)", text: $store.formDescription, axis: .vertical)
+                        .lineLimit(1...3)
+                        .textInputAutocapitalization(.sentences)
 
-                    DatePicker("Date", selection: $store.formOccurredAt, displayedComponents: .date)
+                    NavigationLink {
+                        CategoryPickerView(store: store)
+                    } label: {
+                        CategorySelectorLabel(store: store)
+                    }
+
+                    DatePicker("Date", selection: $store.formOccurredAt, in: ...Date(), displayedComponents: .date)
                 }
 
                 if let error = store.error, !error.isEmpty {
@@ -41,13 +49,13 @@ struct TransactionEditorView: View {
                     }
                 }
             }
+            .interactiveDismissDisabled(store.hasTransactionDraft)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", role: .cancel) {
-                        store.activeSheet = nil
-                        store.clearForm()
+                        store.cancelTransactionEditor()
                         dismiss()
                     }
                 }
@@ -67,41 +75,43 @@ struct TransactionEditorView: View {
     }
 }
 
-private struct CategorySelectorCard: View {
-    @Bindable var store: MoneyManagerStore
+private struct CategorySelectorLabel: View {
+    let store: MoneyManagerStore
 
     var body: some View {
-        Button {
-            store.activeSheet = .categoryPicker
-        } label: {
-            HStack(spacing: 13) {
-                CategoryBadge(category: store.formCategory)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Category")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppColor.mutedText)
-                    Text(categoryTitle(store.formCategory))
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(AppColor.nearBlack)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+        HStack(spacing: 13) {
+            CategoryBadge(category: store.formCategory)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Category")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppColor.mutedText)
+                Text(categoryTitle(store.formCategory))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(AppColor.nearBlack)
             }
+            Spacer()
         }
     }
 }
 
 struct CategoryPickerView: View {
     @Bindable var store: MoneyManagerStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var categoryPendingDeletion: Category?
 
     var body: some View {
-        NavigationStack {
-            List {
+        List {
                 Section {
                     ForEach(store.formCategoryOptions) { category in
-                        CategoryPickerRow(category: category, isSelected: store.formCategory == category.name, store: store)
+                        CategoryPickerRow(
+                            category: category,
+                            isSelected: store.formCategory == category.name,
+                            onSelect: {
+                                store.chooseFormCategory(category.name)
+                                dismiss()
+                            },
+                            onDelete: { categoryPendingDeletion = category }
+                        )
                     }
                 }
 
@@ -126,19 +136,36 @@ struct CategoryPickerView: View {
             .listStyle(.insetGrouped)
             .navigationTitle("Choose category")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear(perform: store.clearTransientError)
+        .alert("Delete category?", isPresented: deleteConfirmationPresented, presenting: categoryPendingDeletion) { category in
+            Button("Delete", role: .destructive) {
+                store.deleteCategory(category)
+                categoryPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                categoryPendingDeletion = nil
+            }
+        } message: { category in
+            Text("\(categoryTitle(category.name)) will be removed from your category list. Existing transactions will not be deleted.")
         }
+    }
+
+    private var deleteConfirmationPresented: Binding<Bool> {
+        Binding(
+            get: { categoryPendingDeletion != nil },
+            set: { if !$0 { categoryPendingDeletion = nil } }
+        )
     }
 }
 
 private struct CategoryPickerRow: View {
     let category: Category
     let isSelected: Bool
-    @Bindable var store: MoneyManagerStore
+    let onSelect: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
-        Button {
-            store.chooseFormCategory(category.name)
-        } label: {
+        Button(action: onSelect) {
             HStack(spacing: 12) {
                 CategoryBadge(category: category.name, size: 36)
                 Text(categoryTitle(category.name))
@@ -149,25 +176,15 @@ private struct CategoryPickerRow: View {
                 }
             }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !category.isDefault, category.id != 0 {
-                Button(role: .destructive) {
-                    store.deleteCategory(category)
-                } label: {
+                Button(role: .destructive, action: onDelete) {
                     Label("Delete", systemImage: "trash")
                 }
                 .tint(AppColor.expense)
             }
         }
-    }
-}
-
-private struct ExportField: View {
-    let title: String
-    @Binding var date: Date
-
-    var body: some View {
-        DatePicker(title, selection: $date, displayedComponents: .date)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -179,8 +196,8 @@ struct ExportTransactionsView: View {
         NavigationStack {
             Form {
                 Section {
-                    ExportField(title: "From", date: $store.exportFrom)
-                    ExportField(title: "To", date: $store.exportTo)
+                    DatePicker("From", selection: $store.exportFrom, in: ...store.exportTo, displayedComponents: .date)
+                    DatePicker("To", selection: $store.exportTo, in: store.exportFrom...Date(), displayedComponents: .date)
                 } footer: {
                     Text("Choose a date range and share a CSV copy of your transactions.")
                 }
@@ -192,12 +209,13 @@ struct ExportTransactionsView: View {
                     }
                 }
             }
+            .interactiveDismissDisabled(store.isLoading)
             .navigationTitle("Export transactions")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", role: .cancel) {
-                        store.activeSheet = nil
+                        store.cancelExport()
                         dismiss()
                     }
                 }

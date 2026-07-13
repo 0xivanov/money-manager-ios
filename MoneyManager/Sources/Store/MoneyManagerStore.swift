@@ -4,8 +4,20 @@ import Observation
 @MainActor
 @Observable
 final class MoneyManagerStore {
+    private enum ActionScope: Hashable {
+        case transactionEditor
+        case export
+        case importCSV
+    }
+
     private let api: MoneyManagerAPI
     private let tokenStore: TokenStore
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshGeneration = 0
+    @ObservationIgnored private var sessionGeneration = 0
+    @ObservationIgnored private var actionTasks: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var scopedActionIDs: [ActionScope: UUID] = [:]
+    @ObservationIgnored private var activeRequestIDs: Set<UUID> = []
 
     var token: String?
     var email = ""
@@ -15,15 +27,20 @@ final class MoneyManagerStore {
     var isRegisterMode = false
     var isLoading = false
     var error: String?
+    var dashboardLoadState: DashboardLoadState = .idle
+    var connectionStatus: ConnectionStatus = .unknown
+    var isDeletingAccount = false
     var month = DateFormat.currentMonthKey()
     var filterType: String?
     var filterCategory: String?
+    var searchQuery = ""
     var summary: TransactionSummary?
     var transactions: [Transaction] = []
     var selectedExpenseCategory: String?
     var editingID: Int?
     var formType = TransactionType.expense.rawValue
     var formCategory = "food"
+    var formDescription = ""
     var formAmount = ""
     var formOccurredAt = Date()
     var expenseCategories: [Category] = []
@@ -32,6 +49,8 @@ final class MoneyManagerStore {
     var exportFrom = DateFormat.firstDayDate(of: DateFormat.currentMonthKey())
     var exportTo = Date()
     var exportShareItem: ExportShareItem?
+    var importResultMessage: String?
+    var isImporting = false
 
     init(api: MoneyManagerAPI = MoneyManagerAPI(), tokenStore: TokenStore = TokenStore()) {
         self.api = api
@@ -41,6 +60,10 @@ final class MoneyManagerStore {
 
     var isAuthenticated: Bool {
         token != nil
+    }
+
+    var apiBaseURL: URL {
+        api.baseURL
     }
 
     var canGoNextMonth: Bool {
@@ -61,8 +84,40 @@ final class MoneyManagerStore {
             .sorted { $0.amount > $1.amount }
     }
 
-    var dayBuckets: [DayBucket] {
-        filteredTransactions
+    var transactionDayBuckets: [DayBucket] {
+        makeDayBuckets(from: filteredTransactions)
+    }
+
+    var dashboardDayBuckets: [DayBucket] {
+        let dashboardTransactions: [Transaction]
+        if let selectedExpenseCategory {
+            dashboardTransactions = transactions.filter {
+                $0.type == TransactionType.expense.rawValue && $0.category == selectedExpenseCategory
+            }
+        } else {
+            dashboardTransactions = transactions
+        }
+        return makeDayBuckets(from: dashboardTransactions)
+    }
+
+    var availableFilterCategories: [String] {
+        let loadedCategories = expenseCategories.map(\.name) + incomeCategories.map(\.name)
+        let transactionCategories = transactions.map(\.category)
+        return Array(Set(loadedCategories + transactionCategories)).sorted {
+            categoryTitle($0).localizedCaseInsensitiveCompare(categoryTitle($1)) == .orderedAscending
+        }
+    }
+
+    var hasActiveTransactionFilters: Bool {
+        filterType != nil || filterCategory != nil || !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var hasTransactionDraft: Bool {
+        editingID != nil || !formAmount.isEmpty || !formDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func makeDayBuckets(from source: [Transaction]) -> [DayBucket] {
+        source
             .reduce(into: [Date: [Transaction]]()) { buckets, transaction in
                 let date = DateFormat.isoDate.date(from: DateFormat.dateOnly(transaction.occurredAt)) ?? .distantPast
                 buckets[date, default: []].append(transaction)
@@ -99,23 +154,63 @@ final class MoneyManagerStore {
         if let filterCategory {
             result = result.filter { $0.category == filterCategory }
         }
-        if let selectedExpenseCategory {
-            result = result.filter { $0.type == TransactionType.expense.rawValue && $0.category == selectedExpenseCategory }
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            let queryAmount = MoneyFormat.inputDecimal(from: query)
+            result = result.filter { transaction in
+                let amount = MoneyFormat.decimal(from: transaction.amount)
+                return transaction.category.localizedCaseInsensitiveContains(query)
+                    || transaction.description?.localizedCaseInsensitiveContains(query) == true
+                    || transaction.amount.localizedCaseInsensitiveContains(query)
+                    || (queryAmount != nil && queryAmount == amount)
+                    || MoneyFormat.amount(amount, currency: transaction.currency).localizedCaseInsensitiveContains(query)
+                    || DateFormat.dateOnly(transaction.occurredAt).localizedCaseInsensitiveContains(query)
+            }
         }
         return result
     }
 
     func bootstrap() async {
-        guard token != nil else { return }
-        await runRequest {
-            try await self.loadCategories()
-            try await self.refreshDashboard()
+        let generation = sessionGeneration
+        await checkHealth()
+        guard generation == sessionGeneration, let savedToken = token else { return }
+        dashboardLoadState = .loading
+        do {
+            async let expenseResult = api.getCategories(token: savedToken, type: TransactionType.expense.rawValue)
+            async let incomeResult = api.getCategories(token: savedToken, type: TransactionType.income.rawValue)
+            let (expenses, income) = try await (expenseResult, incomeResult)
+            try requireCurrentSession(token: savedToken, generation: generation)
+            expenseCategories = expenses
+            incomeCategories = income
+            await refresh()
+            try requireCurrentSession(token: savedToken, generation: generation)
+
+            do {
+                let user = try await api.getCurrentUser(token: savedToken)
+                try requireCurrentSession(token: savedToken, generation: generation)
+                email = user.email
+            } catch APIError.unauthorized {
+                guard isCurrentSession(token: savedToken, generation: generation) else { return }
+                expireSession(message: APIError.unauthorized.localizedDescription)
+            } catch is CancellationError {
+                return
+            } catch {
+                // Core financial data remains usable if optional profile hydration fails.
+            }
+        } catch APIError.unauthorized {
+            guard isCurrentSession(token: savedToken, generation: generation) else { return }
+            expireSession(message: APIError.unauthorized.localizedDescription)
+        } catch is CancellationError {
+            return
+        } catch {
+            guard isCurrentSession(token: savedToken, generation: generation) else { return }
+            dashboardLoadState = .failed(error.localizedDescription)
         }
     }
 
     func submitAuth() {
-        Task {
-            await runRequest {
+        startAction { generation in
+            await self.runRequest(generation: generation) {
                 let trimmedEmail = self.email.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmedEmail.isEmpty, !self.password.isEmpty else {
                     throw ValidationError("Email and password are required")
@@ -123,27 +218,83 @@ final class MoneyManagerStore {
                 let result = self.isRegisterMode
                     ? try await self.api.register(email: trimmedEmail, password: self.password)
                     : try await self.api.login(email: trimmedEmail, password: self.password)
+                try self.requireCurrentGeneration(generation)
                 self.tokenStore.saveToken(result.token)
                 self.token = result.token
                 self.email = result.user.email
                 self.password = ""
-                try await self.loadCategories()
-                try await self.refreshDashboard()
+                self.dashboardLoadState = .loading
+                do {
+                    try await self.loadCategories(token: result.token, generation: generation)
+                } catch {
+                    self.dashboardLoadState = .failed(error.localizedDescription)
+                    throw error
+                }
+                await self.refresh()
             }
         }
     }
 
     func logout() {
+        resetSession(clearEmail: true)
+    }
+
+    func deleteAccount() {
+        guard let token else { return }
+        let generation = sessionGeneration
+        isDeletingAccount = true
+        error = nil
+        startAction(generation: generation) { generation in
+            do {
+                try await self.api.deleteAccount(token: token)
+                try self.requireCurrentSession(token: token, generation: generation)
+                self.resetSession(clearEmail: true)
+            } catch APIError.unauthorized {
+                guard self.isCurrentSession(token: token, generation: generation) else { return }
+                self.expireSession(message: APIError.unauthorized.localizedDescription)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard self.isCurrentSession(token: token, generation: generation) else { return }
+                self.error = error.localizedDescription
+            }
+            if self.sessionGeneration == generation {
+                self.isDeletingAccount = false
+            }
+        }
+    }
+
+    private func resetSession(clearEmail: Bool) {
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshGeneration += 1
+        sessionGeneration += 1
+        let tasks = Array(actionTasks.values)
+        actionTasks.removeAll()
+        scopedActionIDs.removeAll()
+        tasks.forEach { $0.cancel() }
+        activeRequestIDs.removeAll()
+        isLoading = false
+        isDeletingAccount = false
         tokenStore.clearToken()
         token = nil
+        if clearEmail { email = "" }
         password = ""
+        error = nil
+        isRegisterMode = false
         selectedTab = .dashboard
         activeSheet = nil
+        month = DateFormat.currentMonthKey()
         summary = nil
         transactions = []
         selectedExpenseCategory = nil
+        filterType = nil
+        filterCategory = nil
+        searchQuery = ""
         expenseCategories = []
         incomeCategories = []
+        dashboardLoadState = .idle
+        exportShareItem = nil
         clearForm()
     }
 
@@ -161,16 +312,43 @@ final class MoneyManagerStore {
         moveMonth(by: 1)
     }
 
-    func refresh() {
-        Task {
-            await runRequest {
-                try await self.refreshDashboard()
-            }
+    func refresh() async {
+        guard let token else { return }
+        refreshTask?.cancel()
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let requestedMonth = month
+        if summary == nil {
+            dashboardLoadState = .loading
+        }
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performRefresh(token: token, month: requestedMonth, generation: generation)
+        }
+        refreshTask = task
+        await task.value
+        if refreshGeneration == generation {
+            refreshTask = nil
+        }
+    }
+
+    func retryDashboard() {
+        Task { await refresh() }
+    }
+
+    func checkHealth() async {
+        connectionStatus = .checking
+        do {
+            try await api.healthCheck()
+            connectionStatus = .connected
+        } catch {
+            connectionStatus = .offline(error.localizedDescription)
         }
     }
 
     func selectExpenseCategory(_ category: String) {
-        selectedExpenseCategory = selectedExpenseCategory == category ? nil : category
+        selectedExpenseCategory = category
     }
 
     func clearSelectedExpenseCategory() {
@@ -179,15 +357,35 @@ final class MoneyManagerStore {
 
     func updateFilterType(_ value: String?) {
         filterType = value
+    }
+
+    func updateFilterCategory(_ value: String?) {
+        filterCategory = value
+    }
+
+    func resetTransactionFilters() {
+        filterType = nil
         filterCategory = nil
+        searchQuery = ""
+    }
+
+    func showAllTransactions() {
+        resetTransactionFilters()
+        if let selectedExpenseCategory {
+            filterType = TransactionType.expense.rawValue
+            filterCategory = selectedExpenseCategory
+        }
+        selectedTab = .transactions
     }
 
     func openNewTransactionForm() {
+        error = nil
         clearForm()
         activeSheet = .transactionEditor
     }
 
     func openPhysicalPurchaseForm() {
+        error = nil
         clearForm()
         formType = TransactionType.expense.rawValue
         formCategory = "shopping"
@@ -195,9 +393,11 @@ final class MoneyManagerStore {
     }
 
     func editTransaction(_ transaction: Transaction) {
+        error = nil
         editingID = transaction.id
         formType = transaction.type
         formCategory = transaction.category
+        formDescription = transaction.description ?? ""
         formAmount = transaction.amount
         formOccurredAt = DateFormat.apiDate(transaction.occurredAt) ?? Date()
         activeSheet = .transactionEditor
@@ -212,18 +412,28 @@ final class MoneyManagerStore {
     func chooseFormCategory(_ category: String) {
         formCategory = category
         newCategoryName = ""
-        activeSheet = .transactionEditor
+        error = nil
+    }
+
+    func clearTransientError() {
+        error = nil
     }
 
     func saveTransaction() {
-        Task {
-            await runRequest {
+        startAction(scope: .transactionEditor) { generation in
+            await self.runRequest(generation: generation) {
                 try self.validateTransactionForm()
                 guard let token = self.token else { return }
+                guard let amount = MoneyFormat.inputDecimal(from: self.formAmount) else {
+                    throw ValidationError("Enter a valid amount")
+                }
+                let description = self.formDescription.trimmingCharacters(in: .whitespacesAndNewlines)
                 let request = TransactionRequest(
                     type: self.formType,
                     category: self.formCategory,
-                    amount: self.formAmount.trimmingCharacters(in: .whitespacesAndNewlines),
+                    description: description.isEmpty ? nil : description,
+                    amount: MoneyFormat.apiAmount(amount),
+                    currency: self.summary?.currency ?? "EUR",
                     occurredAt: DateFormat.isoDate.string(from: self.formOccurredAt)
                 )
                 if let editingID = self.editingID {
@@ -231,49 +441,59 @@ final class MoneyManagerStore {
                 } else {
                     _ = try await self.api.createTransaction(token: token, transaction: request)
                 }
+                try self.requireCurrentSession(token: token, generation: generation)
                 self.activeSheet = nil
                 self.clearForm()
-                try await self.refreshDashboard()
+                await self.refresh()
             }
         }
     }
 
+    func cancelTransactionEditor() {
+        cancelAction(scope: .transactionEditor)
+        activeSheet = nil
+        clearForm()
+        error = nil
+    }
+
     func deleteTransaction(_ id: Int) {
-        Task {
-            await runRequest {
+        startAction { generation in
+            await self.runRequest(generation: generation) {
                 guard let token = self.token else { return }
                 try await self.api.deleteTransaction(token: token, id: id)
-                try await self.refreshDashboard()
+                try self.requireCurrentSession(token: token, generation: generation)
+                await self.refresh()
             }
         }
     }
 
     func addCategory() {
-        Task {
-            await runRequest {
+        startAction(scope: .transactionEditor) { generation in
+            await self.runRequest(generation: generation) {
                 guard let token = self.token else { return }
                 let name = self.newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !name.isEmpty else {
                     throw ValidationError("Category name is required")
                 }
                 let category = try await self.api.createCategory(token: token, type: self.formType, name: name)
-                try await self.loadCategories()
+                try self.requireCurrentSession(token: token, generation: generation)
+                try await self.loadCategories(token: token, generation: generation)
                 self.formCategory = category.name
                 self.newCategoryName = ""
-                self.activeSheet = .transactionEditor
             }
         }
     }
 
     func deleteCategory(_ category: Category) {
-        Task {
-            await runRequest {
+        startAction(scope: .transactionEditor) { generation in
+            await self.runRequest(generation: generation) {
                 guard let token = self.token else { return }
                 guard !category.isDefault, category.id != 0 else {
                     throw ValidationError("Default categories cannot be deleted")
                 }
                 try await self.api.deleteCategory(token: token, id: category.id)
-                try await self.loadCategories()
+                try self.requireCurrentSession(token: token, generation: generation)
+                try await self.loadCategories(token: token, generation: generation)
                 if self.formCategory == category.name {
                     self.formCategory = self.formCategoryOptions.first?.name ?? (self.formType == TransactionType.income.rawValue ? "salary" : "food")
                 }
@@ -283,24 +503,46 @@ final class MoneyManagerStore {
 
     func openExportDialog() {
         exportFrom = DateFormat.firstDayDate(of: month)
-        exportTo = Date()
+        exportTo = min(DateFormat.lastDayDate(of: month), Date())
         error = nil
         activeSheet = .exportTransactions
     }
 
     func exportTransactions() {
-        Task {
-            await runRequest {
+        startAction(scope: .export) { generation in
+            await self.runRequest(generation: generation) {
                 guard let token = self.token else { return }
                 let from = DateFormat.isoDate.string(from: self.exportFrom)
                 let to = DateFormat.isoDate.string(from: self.exportTo)
                 guard self.exportFrom <= self.exportTo else {
-                    throw ValidationError("From date must be before or equal to to date")
+                    throw ValidationError("The start date must be on or before the end date")
                 }
                 let csv = try await self.api.exportTransactionsCSV(token: token, from: from, to: to)
+                try self.requireCurrentSession(token: token, generation: generation)
                 let url = try ExportFileWriter.writeCSV(csv, fileName: "money-manager-\(from)-to-\(to).csv")
+                try self.requireCurrentSession(token: token, generation: generation)
                 self.exportShareItem = ExportShareItem(url: url)
                 self.activeSheet = nil
+            }
+        }
+    }
+
+    func cancelExport() {
+        cancelAction(scope: .export)
+        activeSheet = nil
+        error = nil
+    }
+
+    func importRevolutCSV(_ data: Data) {
+        startAction(scope: .importCSV) { generation in
+            self.isImporting = true
+            defer { self.isImporting = false }
+            await self.runRequest(generation: generation) {
+                guard let token = self.token else { return }
+                let result = try await self.api.importRevolutCSV(token: token, data: data)
+                try self.requireCurrentSession(token: token, generation: generation)
+                self.importResultMessage = "Imported \(result.imported). Skipped \(result.skipped) duplicates and \(result.ignored) unsupported rows."
+                await self.refresh()
             }
         }
     }
@@ -309,6 +551,7 @@ final class MoneyManagerStore {
         editingID = nil
         formType = TransactionType.expense.rawValue
         formCategory = "food"
+        formDescription = ""
         formAmount = ""
         formOccurredAt = Date()
         newCategoryName = ""
@@ -320,53 +563,146 @@ final class MoneyManagerStore {
         }
         month = DateFormat.monthKey.string(from: nextDate)
         selectedExpenseCategory = nil
-        refresh()
+        summary = nil
+        transactions = []
+        dashboardLoadState = .loading
+        Task { await refresh() }
     }
 
-    private func loadCategories() async throws {
-        guard let token else { return }
-        async let expense = api.getCategories(token: token, type: TransactionType.expense.rawValue)
-        async let income = api.getCategories(token: token, type: TransactionType.income.rawValue)
-        expenseCategories = try await expense
-        incomeCategories = try await income
+    private func loadCategories(token requestedToken: String, generation: Int) async throws {
+        async let expense = api.getCategories(token: requestedToken, type: TransactionType.expense.rawValue)
+        async let income = api.getCategories(token: requestedToken, type: TransactionType.income.rawValue)
+        let (newExpenseCategories, newIncomeCategories) = try await (expense, income)
+        try requireCurrentSession(token: requestedToken, generation: generation)
+        expenseCategories = newExpenseCategories
+        incomeCategories = newIncomeCategories
         if formCategory.isEmpty {
             formCategory = expenseCategories.first?.name ?? "food"
         }
     }
 
-    private func refreshDashboard() async throws {
-        guard let token else { return }
-        async let summaryResult = api.getSummary(token: token, month: month)
-        async let transactionsResult = api.getTransactions(token: token, month: month)
-        summary = try await summaryResult
-        transactions = try await transactionsResult
-        error = nil
+    private func performRefresh(token requestedToken: String, month requestedMonth: String, generation: Int) async {
+        do {
+            async let summaryResult = api.getSummary(token: requestedToken, month: requestedMonth)
+            async let transactionsResult = api.getTransactions(token: requestedToken, month: requestedMonth)
+            let (newSummary, newTransactions) = try await (summaryResult, transactionsResult)
+            try Task.checkCancellation()
+            guard
+                refreshGeneration == generation,
+                token == requestedToken,
+                month == requestedMonth
+            else { return }
+            summary = newSummary
+            transactions = newTransactions
+            dashboardLoadState = .loaded
+            error = nil
+        } catch is CancellationError {
+            return
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            return
+        } catch APIError.unauthorized {
+            guard refreshGeneration == generation else { return }
+            expireSession(message: APIError.unauthorized.localizedDescription)
+        } catch {
+            guard
+                refreshGeneration == generation,
+                token == requestedToken,
+                month == requestedMonth
+            else { return }
+            dashboardLoadState = .failed(error.localizedDescription)
+        }
     }
 
     private func validateTransactionForm() throws {
         let trimmedAmount = formAmount.trimmingCharacters(in: .whitespacesAndNewlines)
-        let amount = MoneyFormat.decimal(from: trimmedAmount)
-        guard amount > .zero else {
+        guard let amount = MoneyFormat.inputDecimal(from: trimmedAmount), amount > .zero else {
             throw ValidationError("Enter an amount greater than 0")
         }
         guard !formCategory.isEmpty else {
             throw ValidationError("Choose a category")
         }
+        guard formDescription.count <= 200 else {
+            throw ValidationError("Description must be 200 characters or fewer")
+        }
     }
 
-    private func runRequest(_ operation: @escaping () async throws -> Void) async {
+    private func startAction(
+        scope: ActionScope? = nil,
+        generation: Int? = nil,
+        _ operation: @escaping @MainActor (Int) async -> Void
+    ) {
+        if let scope {
+            cancelAction(scope: scope)
+        }
+        let id = UUID()
+        let requestedGeneration = generation ?? sessionGeneration
+        if let scope {
+            scopedActionIDs[scope] = id
+        }
+        actionTasks[id] = Task { [weak self] in
+            guard let self else { return }
+            await operation(requestedGeneration)
+            self.actionTasks[id] = nil
+            if let scope, self.scopedActionIDs[scope] == id {
+                self.scopedActionIDs[scope] = nil
+            }
+        }
+    }
+
+    private func cancelAction(scope: ActionScope) {
+        guard let id = scopedActionIDs.removeValue(forKey: scope) else { return }
+        actionTasks.removeValue(forKey: id)?.cancel()
+    }
+
+    private func runRequest(
+        generation: Int,
+        _ operation: @escaping () async throws -> Void
+    ) async {
+        guard generation == sessionGeneration else { return }
+        let requestID = UUID()
+        activeRequestIDs.insert(requestID)
         isLoading = true
         error = nil
+        defer {
+            activeRequestIDs.remove(requestID)
+            isLoading = !activeRequestIDs.isEmpty
+        }
         do {
+            try Task.checkCancellation()
             try await operation()
+            try Task.checkCancellation()
+        } catch is CancellationError {
+            return
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            return
         } catch APIError.unauthorized {
-            tokenStore.clearToken()
-            token = nil
-            error = APIError.unauthorized.localizedDescription
+            guard generation == sessionGeneration else { return }
+            expireSession(message: APIError.unauthorized.localizedDescription)
         } catch {
+            guard generation == sessionGeneration else { return }
             self.error = error.localizedDescription
         }
-        isLoading = false
+    }
+
+    private func isCurrentSession(token requestedToken: String, generation: Int) -> Bool {
+        sessionGeneration == generation && token == requestedToken
+    }
+
+    private func requireCurrentSession(token requestedToken: String, generation: Int) throws {
+        guard isCurrentSession(token: requestedToken, generation: generation) else {
+            throw CancellationError()
+        }
+        try Task.checkCancellation()
+    }
+
+    private func requireCurrentGeneration(_ generation: Int) throws {
+        guard sessionGeneration == generation else { throw CancellationError() }
+        try Task.checkCancellation()
+    }
+
+    private func expireSession(message: String) {
+        resetSession(clearEmail: false)
+        error = message
     }
 }
 

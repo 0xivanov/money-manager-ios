@@ -24,8 +24,22 @@ struct MoneyManagerAPI {
     let baseURL: URL
     var session: URLSession = .shared
 
-    init(baseURL: URL = URL(string: "http://localhost:8080")!) {
+    init(baseURL: URL = AppConfiguration.apiBaseURL) {
         self.baseURL = baseURL
+    }
+
+    func healthCheck() async throws {
+        let request = try makeRequest(path: "/health")
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+    }
+
+    func getCurrentUser(token: String) async throws -> User {
+        try await request(path: "/me", token: token)
+    }
+
+    func deleteAccount(token: String) async throws {
+        let _: EmptyResponse = try await request(path: "/me", method: "DELETE", token: token)
     }
 
     func register(email: String, password: String) async throws -> AuthResult {
@@ -97,6 +111,16 @@ struct MoneyManagerAPI {
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    func importRevolutCSV(token: String, data: Data) async throws -> ImportResult {
+        var request = try makeRequest(path: "/transactions/import/revolut", method: "POST", token: token)
+        request.setValue("text/csv", forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        request.timeoutInterval = 30
+        let (responseData, response) = try await session.data(for: request)
+        try validate(response: response, data: responseData)
+        return try JSONDecoder().decode(ImportResult.self, from: responseData)
     }
 
     func makeRequest(
