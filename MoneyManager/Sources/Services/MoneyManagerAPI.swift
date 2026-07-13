@@ -123,11 +123,102 @@ struct MoneyManagerAPI {
         return try JSONDecoder().decode(ImportResult.self, from: responseData)
     }
 
+    func getOpenBankingInstitutions(token: String, country: String, psuType: String = "personal") async throws -> [OpenBankingInstitution] {
+        try await request(
+            path: "/api/open-banking/banks",
+            token: token,
+            queryItems: [
+                URLQueryItem(name: "country", value: country),
+                URLQueryItem(name: "psu_type", value: psuType)
+            ],
+            timeoutInterval: 30
+        )
+    }
+
+    func startOpenBankingAuthorization(
+        token: String,
+        institution: OpenBankingInstitution,
+        consentDays: Int = 90,
+        language: String = "en"
+    ) async throws -> OpenBankingAuthorization {
+        let maximumDays = institution.maximumConsentValidity > 0
+            ? min(consentDays, institution.maximumConsentValidity)
+            : consentDays
+        let body = OpenBankingAuthorizationRequest(
+            institutionName: institution.name,
+            country: institution.country,
+            psuType: "personal",
+            consentDays: max(1, maximumDays),
+            language: language
+        )
+        return try await request(
+            path: "/api/open-banking/authorizations",
+            method: "POST",
+            token: token,
+            body: body,
+            timeoutInterval: 30
+        )
+    }
+
+    func getOpenBankingConnections(token: String) async throws -> [OpenBankingConnection] {
+        try await request(path: "/api/open-banking/connections", token: token)
+    }
+
+    func getOpenBankingConnection(token: String, id: Int) async throws -> OpenBankingConnection {
+        try await request(path: "/api/open-banking/connections/\(id)", token: token, timeoutInterval: 30)
+    }
+
+    func deleteOpenBankingConnection(token: String, id: Int) async throws {
+        let _: EmptyResponse = try await request(
+            path: "/api/open-banking/connections/\(id)",
+            method: "DELETE",
+            token: token,
+            timeoutInterval: 30
+        )
+    }
+
+    func getOpenBankingAccounts(token: String) async throws -> [OpenBankingAccount] {
+        try await request(path: "/api/open-banking/accounts", token: token)
+    }
+
+    func getOpenBankingBalances(token: String, accountID: Int) async throws -> OpenBankingBalanceResponse {
+        try await request(
+            path: "/api/open-banking/accounts/\(accountID)/balances",
+            token: token,
+            timeoutInterval: 30
+        )
+    }
+
+    func getOpenBankingTransactions(
+        token: String,
+        accountID: Int,
+        dateFrom: String,
+        dateTo: String,
+        continuationKey: String? = nil
+    ) async throws -> OpenBankingTransactionResponse {
+        var queryItems = [
+            URLQueryItem(name: "date_from", value: dateFrom),
+            URLQueryItem(name: "date_to", value: dateTo),
+            URLQueryItem(name: "transaction_status", value: "BOOK"),
+            URLQueryItem(name: "strategy", value: "default")
+        ]
+        if let continuationKey, !continuationKey.isEmpty {
+            queryItems.append(URLQueryItem(name: "continuation_key", value: continuationKey))
+        }
+        return try await request(
+            path: "/api/open-banking/accounts/\(accountID)/transactions",
+            token: token,
+            queryItems: queryItems,
+            timeoutInterval: 30
+        )
+    }
+
     func makeRequest(
         path: String,
         method: String = "GET",
         token: String? = nil,
-        queryItems: [URLQueryItem] = []
+        queryItems: [URLQueryItem] = [],
+        timeoutInterval: TimeInterval = 10
     ) throws -> URLRequest {
         guard var components = URLComponents(url: baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))), resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL
@@ -140,7 +231,7 @@ struct MoneyManagerAPI {
         }
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 10
+        request.timeoutInterval = timeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -156,9 +247,16 @@ struct MoneyManagerAPI {
         path: String,
         method: String = "GET",
         token: String? = nil,
-        queryItems: [URLQueryItem] = []
+        queryItems: [URLQueryItem] = [],
+        timeoutInterval: TimeInterval = 10
     ) async throws -> T {
-        let request = try makeRequest(path: path, method: method, token: token, queryItems: queryItems)
+        let request = try makeRequest(
+            path: path,
+            method: method,
+            token: token,
+            queryItems: queryItems,
+            timeoutInterval: timeoutInterval
+        )
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         if T.self == EmptyResponse.self {
@@ -174,9 +272,10 @@ struct MoneyManagerAPI {
         path: String,
         method: String,
         token: String? = nil,
-        body: Body
+        body: Body,
+        timeoutInterval: TimeInterval = 10
     ) async throws -> T {
-        var request = try makeRequest(path: path, method: method, token: token)
+        var request = try makeRequest(path: path, method: method, token: token, timeoutInterval: timeoutInterval)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
         let (data, response) = try await session.data(for: request)

@@ -176,29 +176,29 @@ struct MonthNavigator: View {
     let next: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
-            Button(action: previous) {
-                Image(systemName: "chevron.left")
-                    .frame(width: 32, height: 32)
-            }
-            .disabled(isLoading)
-            .accessibilityLabel("Previous month")
-
-            Spacer(minLength: 8)
-
+        ZStack {
             Text(DateFormat.monthDisplay(month))
                 .font(.headline)
                 .foregroundStyle(AppColor.nearBlack)
                 .accessibilityAddTraits(.isHeader)
 
-            Spacer(minLength: 8)
+            HStack {
+                Button(action: previous) {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 32, height: 32)
+                }
+                .disabled(isLoading)
+                .accessibilityLabel("Previous month")
 
-            Button(action: next) {
-                Image(systemName: "chevron.right")
-                    .frame(width: 32, height: 32)
+                Spacer()
+
+                Button(action: next) {
+                    Image(systemName: "chevron.right")
+                        .frame(width: 32, height: 32)
+                }
+                .disabled(isLoading || !canGoNext)
+                .accessibilityLabel("Next month")
             }
-            .disabled(isLoading || !canGoNext)
-            .accessibilityLabel("Next month")
         }
         .frame(maxWidth: .infinity)
     }

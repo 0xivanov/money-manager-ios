@@ -74,6 +74,63 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertEqual(object["occurred_at"], "2026-07-11")
     }
 
+    func testDecodesOpenBankingContractsAndProviderData() throws {
+        let institutionJSON = """
+        {
+          "name":"Revolut","country":"BG","logo":"https://example.com/revolut.svg",
+          "psu_types":["personal"],"auth_methods":[{"name":"redirect","title":"Mobile app","psu_type":"personal","approach":"REDIRECT","hidden_method":false}],
+          "maximum_consent_validity":180,"beta":false,"bic":"REVOBGSF"
+        }
+        """.data(using: .utf8)!
+        let institution = try JSONDecoder().decode(OpenBankingInstitution.self, from: institutionJSON)
+        XCTAssertEqual(institution.id, "BG:Revolut")
+        XCTAssertEqual(institution.maximumConsentValidity, 180)
+
+        let connectionJSON = """
+        {"id":4,"institution_name":"Revolut","country":"BG","psu_type":"personal","status":"AUTHORIZED","valid_until":"2026-10-11T00:00:00Z","account_count":2,"created_at":"2026-07-13T10:00:00Z","updated_at":"2026-07-13T10:00:00Z"}
+        """.data(using: .utf8)!
+        let connection = try JSONDecoder().decode(OpenBankingConnection.self, from: connectionJSON)
+        XCTAssertFalse(connection.needsAttention)
+        XCTAssertEqual(connection.accountCount, 2)
+
+        let accountJSON = """
+        {"id":8,"connection_id":4,"institution_name":"Revolut","country":"BG","name":"Ivan Ivanov","details":"Everyday","cash_account_type":"CACC","product":"Current","currency":"EUR","display_identifier":"•••• 0123","identification_hash":"hash","can_fetch_data":true}
+        """.data(using: .utf8)!
+        let account = try JSONDecoder().decode(OpenBankingAccount.self, from: accountJSON)
+        XCTAssertEqual(account.displayName, "Everyday")
+        XCTAssertTrue(account.canFetchData)
+
+        let balancesJSON = """
+        {"balances":[{"name":"Available","balance_amount":{"currency":"EUR","amount":"900.00"},"balance_type":"CLAV"},{"name":"Booked","balance_amount":{"currency":"EUR","amount":"880.25"},"balance_type":"CLBD"}]}
+        """.data(using: .utf8)!
+        let balances = try JSONDecoder().decode(OpenBankingBalanceResponse.self, from: balancesJSON)
+        XCTAssertEqual(balances.preferredBalance?.balanceAmount.decimal, Decimal(string: "880.25"))
+
+        let transactionsJSON = """
+        {"continuation_key":"next","transactions":[{"transaction_id":"tx-1","status":"BOOK","booking_date":"2026-07-12","credit_debit_indicator":"DBIT","creditor":{"name":"Fresh Market"},"remittance_information":["Weekly groceries"],"transaction_amount":{"currency":"EUR","amount":"42.80"}}]}
+        """.data(using: .utf8)!
+        let transactions = try JSONDecoder().decode(OpenBankingTransactionResponse.self, from: transactionsJSON)
+        let transaction = try XCTUnwrap(transactions.transactions.first)
+        XCTAssertEqual(transaction.title, "Fresh Market")
+        XCTAssertEqual(transaction.signedAmount, Decimal(string: "-42.80"))
+        XCTAssertEqual(transaction.detail, "Weekly groceries")
+    }
+
+    @MainActor
+    func testHandlesOpenBankingDeepLinkCallback() throws {
+        let store = MoneyManagerStore()
+        let url = try XCTUnwrap(URL(string: "moneymanager://open-banking?status=connected&connection_id=27"))
+        store.handleOpenBankingCallback(url)
+
+        XCTAssertEqual(store.openBankingCallbackState, .connected(connectionID: 27))
+        XCTAssertEqual(store.selectedTab, .profile)
+        XCTAssertNil(store.openBankingError)
+
+        let failedURL = try XCTUnwrap(URL(string: "moneymanager://open-banking?status=failed&error=session_exchange_failed"))
+        store.handleOpenBankingCallback(failedURL)
+        XCTAssertEqual(store.openBankingCallbackState, .failed("Bank connection failed: session exchange failed."))
+    }
+
     @MainActor
     func testDerivedCategoryTotalsAndDayBuckets() {
         let store = MoneyManagerStore()

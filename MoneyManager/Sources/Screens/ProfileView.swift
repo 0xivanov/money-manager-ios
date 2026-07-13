@@ -30,13 +30,17 @@ struct ProfileView: View {
                 }
 
                 Section {
-                    IntegrationRoadmapRow(icon: "building.columns.fill", title: "Bank accounts", detail: "Balances and transactions")
+                    NavigationLink {
+                        OpenBankingView(store: store)
+                    } label: {
+                        BankConnectionProfileRow(store: store)
+                    }
                     IntegrationRoadmapRow(icon: "chart.line.uptrend.xyaxis", title: "Stock brokers", detail: "Holdings and performance")
                     IntegrationRoadmapRow(icon: "bitcoinsign.circle.fill", title: "Crypto exchanges", detail: "Wallets and positions")
                 } header: {
-                    Text("Future connections")
+                    Text("Connections")
                 } footer: {
-                    Text("These integrations are planned and are not connected yet.")
+                    Text("Bank connections are read-only. Broker and crypto integrations are planned for later.")
                 }
 
                 Section("Data") {
@@ -87,6 +91,9 @@ struct ProfileView: View {
                 if store.connectionStatus == .unknown {
                     await store.checkHealth()
                 }
+                if store.openBankingLoadState == .idle {
+                    await store.loadOpenBanking()
+                }
             }
             .alert("Delete your account?", isPresented: $isDeleteAccountConfirmationPresented) {
                 Button("Delete account", role: .destructive, action: store.deleteAccount)
@@ -123,6 +130,51 @@ struct ProfileView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return "\(version) (\(build))"
+    }
+}
+
+private struct BankConnectionProfileRow: View {
+    let store: MoneyManagerStore
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "building.columns.fill")
+                .foregroundStyle(AppColor.financeGreen)
+                .frame(width: 34, height: 34)
+                .background(AppColor.softGreenSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Bank accounts")
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+            }
+            Spacer()
+            Text(status)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppColor.financeGreen)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(AppColor.softGreenSurface)
+                .clipShape(Capsule())
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Bank accounts, \(detail), \(status.lowercased())")
+    }
+
+    private var detail: String {
+        if store.openBankingConnections.isEmpty {
+            return "Balances and transactions"
+        }
+        let accountCount = store.openBankingAccounts.count
+        return "\(store.openBankingConnections.count) connected · \(accountCount) \(accountCount == 1 ? "account" : "accounts")"
+    }
+
+    private var status: String {
+        if store.openBankingLoadState == .loading { return "CHECKING" }
+        if !store.openBankingConnections.isEmpty { return "LIVE" }
+        return "READY"
     }
 }
 
