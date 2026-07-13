@@ -21,14 +21,34 @@ struct Transaction: Codable, Identifiable, Equatable {
     let id: Int
     let type: String
     let category: String
+    let description: String?
     let amount: String
     let currency: String
     let occurredAt: String
+
+    init(
+        id: Int,
+        type: String,
+        category: String,
+        description: String? = nil,
+        amount: String,
+        currency: String,
+        occurredAt: String
+    ) {
+        self.id = id
+        self.type = type
+        self.category = category
+        self.description = description
+        self.amount = amount
+        self.currency = currency
+        self.occurredAt = occurredAt
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
         case type
         case category
+        case description
         case amount
         case currency
         case occurredAt = "occurred_at"
@@ -38,13 +58,22 @@ struct Transaction: Codable, Identifiable, Equatable {
 struct TransactionRequest: Codable, Equatable {
     let type: String
     let category: String
+    let description: String?
     let amount: String
     let currency: String
     let occurredAt: String
 
-    init(type: String, category: String, amount: String, currency: String = "EUR", occurredAt: String) {
+    init(
+        type: String,
+        category: String,
+        description: String? = nil,
+        amount: String,
+        currency: String = "EUR",
+        occurredAt: String
+    ) {
         self.type = type
         self.category = category
+        self.description = description
         self.amount = amount
         self.currency = currency
         self.occurredAt = occurredAt
@@ -53,6 +82,7 @@ struct TransactionRequest: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case type
         case category
+        case description
         case amount
         case currency
         case occurredAt = "occurred_at"
@@ -114,14 +144,16 @@ struct DayBucket: Identifiable, Equatable {
 enum AppTab: String, CaseIterable, Identifiable {
     case dashboard
     case transactions
+    case investments
     case profile
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .dashboard: "Dashboard"
-        case .transactions: "Transactions"
+        case .dashboard: "Home"
+        case .transactions: "Activity"
+        case .investments: "Invest"
         case .profile: "Profile"
         }
     }
@@ -130,6 +162,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: "house.fill"
         case .transactions: "receipt.fill"
+        case .investments: "chart.line.uptrend.xyaxis"
         case .profile: "person.crop.circle.fill"
         }
     }
@@ -137,14 +170,32 @@ enum AppTab: String, CaseIterable, Identifiable {
 
 enum AppSheet: Identifiable, Equatable {
     case transactionEditor
-    case categoryPicker
     case exportTransactions
 
     var id: String {
         switch self {
         case .transactionEditor: "transactionEditor"
-        case .categoryPicker: "categoryPicker"
         case .exportTransactions: "exportTransactions"
         }
     }
+}
+
+enum DashboardLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed(String)
+}
+
+struct ImportResult: Codable, Equatable {
+    let imported: Int
+    let skipped: Int
+    let ignored: Int
+}
+
+enum ConnectionStatus: Equatable {
+    case unknown
+    case checking
+    case connected
+    case offline(String)
 }

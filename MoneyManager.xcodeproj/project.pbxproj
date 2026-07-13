@@ -22,6 +22,8 @@
 		001001000000000000000013 /* SharedComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000013 /* SharedComponents.swift */; };
 		001001000000000000000014 /* Formatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000014 /* Formatters.swift */; };
 		001001000000000000000015 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000015 /* ShareSheet.swift */; };
+		001001000000000000000016 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000016 /* AppConfiguration.swift */; };
+		001001000000000000000017 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000017 /* Assets.xcassets */; };
 		001002000000000000000001 /* MoneyManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002002000000000000000001 /* MoneyManagerTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -51,6 +53,8 @@
 		002001000000000000000013 /* SharedComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedComponents.swift; sourceTree = "<group>"; };
 		002001000000000000000014 /* Formatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatters.swift; sourceTree = "<group>"; };
 		002001000000000000000015 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
+		002001000000000000000016 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
+		002001000000000000000017 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		002002000000000000000001 /* MoneyManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyManagerTests.swift; sourceTree = "<group>"; };
 		006000000000000000000001 /* MoneyManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MoneyManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		006000000000000000000002 /* MoneyManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MoneyManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -66,6 +70,7 @@
 			isa = PBXGroup;
 			children = (
 				008000000000000000000002 /* MoneyManager */,
+				008000000000000000000012 /* Resources */,
 				008000000000000000000011 /* MoneyManagerTests */,
 				008000000000000000000020 /* Products */,
 			);
@@ -89,12 +94,13 @@
 		008000000000000000000003 /* App */ = {isa = PBXGroup; children = (002001000000000000000001, 002001000000000000000002); path = App; sourceTree = "<group>"; };
 		008000000000000000000004 /* DesignSystem */ = {isa = PBXGroup; children = (002001000000000000000003); path = DesignSystem; sourceTree = "<group>"; };
 		008000000000000000000005 /* Models */ = {isa = PBXGroup; children = (002001000000000000000004); path = Models; sourceTree = "<group>"; };
-		008000000000000000000006 /* Services */ = {isa = PBXGroup; children = (002001000000000000000005, 002001000000000000000006); path = Services; sourceTree = "<group>"; };
+		008000000000000000000006 /* Services */ = {isa = PBXGroup; children = (002001000000000000000016, 002001000000000000000005, 002001000000000000000006); path = Services; sourceTree = "<group>"; };
 		008000000000000000000007 /* Store */ = {isa = PBXGroup; children = (002001000000000000000007); path = Store; sourceTree = "<group>"; };
 		008000000000000000000008 /* Screens */ = {isa = PBXGroup; children = (002001000000000000000008, 002001000000000000000009, 002001000000000000000010, 002001000000000000000011, 002001000000000000000012); path = Screens; sourceTree = "<group>"; };
 		008000000000000000000009 /* Components */ = {isa = PBXGroup; children = (002001000000000000000013); path = Components; sourceTree = "<group>"; };
 		008000000000000000000010 /* Utilities */ = {isa = PBXGroup; children = (002001000000000000000014, 002001000000000000000015); path = Utilities; sourceTree = "<group>"; };
 		008000000000000000000011 /* MoneyManagerTests */ = {isa = PBXGroup; children = (002002000000000000000001); path = MoneyManagerTests; sourceTree = "<group>"; };
+		008000000000000000000012 /* Resources */ = {isa = PBXGroup; children = (002001000000000000000017); path = MoneyManager/Resources; sourceTree = "<group>"; };
 		008000000000000000000020 /* Products */ = {isa = PBXGroup; children = (006000000000000000000001, 006000000000000000000002); name = Products; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
@@ -159,7 +165,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		011000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		011000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (001001000000000000000017); runOnlyForDeploymentPostprocessing = 0; };
 		011000000000000000000002 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
@@ -182,7 +188,8 @@
 				001001000000000000000012,
 				001001000000000000000013,
 				001001000000000000000014,
-				001001000000000000000015,
+					001001000000000000000015,
+					001001000000000000000016,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -308,6 +315,8 @@
 		013000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				API_BASE_URL = "https://money.0xivanov.dev";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -334,6 +343,8 @@
 		013000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				API_BASE_URL = "https://money.0xivanov.dev";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

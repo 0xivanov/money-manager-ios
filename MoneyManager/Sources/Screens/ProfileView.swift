@@ -1,54 +1,204 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ProfileView: View {
     @Bindable var store: MoneyManagerStore
-    private let apiBaseURL = "http://localhost:8080"
+    @State private var isDeleteAccountConfirmationPresented = false
+    @State private var isImportPickerPresented = false
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
+                Section("Account") {
                     AccountRow(store: store)
                 }
 
                 Section("Connection") {
-                    LabeledContent("API base URL", value: apiBaseURL)
-                        .font(.subheadline.monospaced())
-                    Label(isLoadingTitle, systemImage: store.isLoading ? "arrow.triangle.2.circlepath" : "checkmark.circle.fill")
-                        .foregroundStyle(store.isLoading ? AppColor.mutedText : AppColor.income)
+                    LabeledContent("Server") {
+                        Text(store.apiBaseURL.host ?? store.apiBaseURL.absoluteString)
+                            .font(.subheadline.monospaced())
+                            .foregroundStyle(AppColor.mutedText)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    ConnectionStatusRow(status: store.connectionStatus)
+                    Button {
+                        Task { await store.checkHealth() }
+                    } label: {
+                        Label("Check connection", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(store.connectionStatus == .checking)
+                }
+
+                Section {
+                    IntegrationRoadmapRow(icon: "building.columns.fill", title: "Bank accounts", detail: "Balances and transactions")
+                    IntegrationRoadmapRow(icon: "chart.line.uptrend.xyaxis", title: "Stock brokers", detail: "Holdings and performance")
+                    IntegrationRoadmapRow(icon: "bitcoinsign.circle.fill", title: "Crypto exchanges", detail: "Wallets and positions")
+                } header: {
+                    Text("Future connections")
+                } footer: {
+                    Text("These integrations are planned and are not connected yet.")
                 }
 
                 Section("Data") {
+                    Button {
+                        isImportPickerPresented = true
+                    } label: {
+                        Label("Import Revolut CSV", systemImage: "square.and.arrow.down.on.square")
+                    }
+                    .disabled(store.isLoading || store.isImporting)
                     Button(action: store.openExportDialog) {
                         Label("Export transactions", systemImage: "square.and.arrow.down")
                     }
                     .disabled(store.isLoading)
                 }
 
+                #if DEBUG
                 Section("Developer") {
                     Button(action: store.openPhysicalPurchaseForm) {
                         Label("Simulate purchase signal", systemImage: "bolt.fill")
                     }
                 }
+                #endif
+
+                Section("App") {
+                    LabeledContent("Version", value: appVersion)
+                }
 
                 Section {
-                    Button("Logout", role: .destructive, action: store.logout)
+                    Button("Log out", role: .destructive, action: store.logout)
+                    Button("Delete account", role: .destructive) {
+                        isDeleteAccountConfirmationPresented = true
+                    }
+                    .disabled(store.isDeletingAccount)
+                } footer: {
+                    Text("Deleting your account permanently removes your transactions and categories.")
                 }
 
                 if let error = store.error, !error.isEmpty {
                     Section {
-                        Text(error)
-                            .foregroundStyle(AppColor.expense)
+                        ErrorBanner(message: error)
                     }
                 }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Profile")
+            .refreshable { await store.checkHealth() }
+            .task {
+                if store.connectionStatus == .unknown {
+                    await store.checkHealth()
+                }
+            }
+            .alert("Delete your account?", isPresented: $isDeleteAccountConfirmationPresented) {
+                Button("Delete account", role: .destructive, action: store.deleteAccount)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This cannot be undone. All transactions, categories, and account data will be permanently deleted.")
+            }
+            .alert("Revolut import", isPresented: Binding(
+                get: { store.importResultMessage != nil },
+                set: { if !$0 { store.importResultMessage = nil } }
+            )) {
+                Button("OK") { store.importResultMessage = nil }
+            } message: {
+                Text(store.importResultMessage ?? "")
+            }
+            .fileImporter(
+                isPresented: $isImportPickerPresented,
+                allowedContentTypes: [.commaSeparatedText, .plainText],
+                allowsMultipleSelection: false
+            ) { result in
+                do {
+                    guard let url = try result.get().first else { return }
+                    let granted = url.startAccessingSecurityScopedResource()
+                    defer { if granted { url.stopAccessingSecurityScopedResource() } }
+                    store.importRevolutCSV(try Data(contentsOf: url))
+                } catch {
+                    store.error = error.localizedDescription
+                }
+            }
         }
     }
 
-    private var isLoadingTitle: String {
-        store.isLoading ? "Syncing..." : "Connected"
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "\(version) (\(build))"
+    }
+}
+
+private struct IntegrationRoadmapRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundStyle(AppColor.financeGreen)
+                .frame(width: 34, height: 34)
+                .background(AppColor.softGreenSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+            }
+            Spacer()
+            Text("SOON")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppColor.mutedText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(AppColor.background)
+                .clipShape(Capsule())
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(detail), coming later")
+    }
+}
+
+private struct ConnectionStatusRow: View {
+    let status: ConnectionStatus
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .foregroundStyle(tint)
+            .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var title: String {
+        switch status {
+        case .unknown: "Not checked"
+        case .checking: "Checking connection…"
+        case .connected: "Connected"
+        case .offline: "Unavailable"
+        }
+    }
+
+    private var systemImage: String {
+        switch status {
+        case .unknown: "questionmark.circle"
+        case .checking: "arrow.triangle.2.circlepath"
+        case .connected: "checkmark.circle.fill"
+        case .offline: "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch status {
+        case .unknown, .checking: AppColor.mutedText
+        case .connected: AppColor.income
+        case .offline: AppColor.expense
+        }
+    }
+
+    private var accessibilityLabel: String {
+        if case .offline(let message) = status {
+            return "Server unavailable. \(message)"
+        }
+        return title
     }
 }
 
