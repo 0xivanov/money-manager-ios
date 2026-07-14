@@ -189,6 +189,15 @@ struct MoneyManagerAPI {
         )
     }
 
+    func syncOpenBankingAccount(token: String, accountID: Int) async throws -> OpenBankingSyncResult {
+        try await request(
+            path: "/api/open-banking/accounts/\(accountID)/sync",
+            method: "POST",
+            token: token,
+            timeoutInterval: 60
+        )
+    }
+
     func getOpenBankingTransactions(
         token: String,
         accountID: Int,
@@ -243,7 +252,7 @@ struct MoneyManagerAPI {
         try await request(path: path, method: "POST", body: ["email": email, "password": password])
     }
 
-    private func request<T: Decodable>(
+    func request<T: Decodable>(
         path: String,
         method: String = "GET",
         token: String? = nil,
@@ -268,7 +277,7 @@ struct MoneyManagerAPI {
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private func request<T: Decodable, Body: Encodable>(
+    func request<T: Decodable, Body: Encodable>(
         path: String,
         method: String,
         token: String? = nil,
@@ -283,7 +292,7 @@ struct MoneyManagerAPI {
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private func validate(response: URLResponse, data: Data) throws {
+    func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else { return }
         guard (200...299).contains(http.statusCode) else {
             if http.statusCode == 401 {
@@ -306,4 +315,4 @@ struct MoneyManagerAPI {
     }
 }
 
-private struct EmptyResponse: Decodable {}
+struct EmptyResponse: Decodable {}

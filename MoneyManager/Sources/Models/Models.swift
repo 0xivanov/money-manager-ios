@@ -25,6 +25,10 @@ struct Transaction: Codable, Identifiable, Equatable {
     let amount: String
     let currency: String
     let occurredAt: String
+    let source: String?
+    let status: String?
+    let excludedFromBudget: Bool?
+    let scheduleOccurrenceID: Int?
 
     init(
         id: Int,
@@ -33,7 +37,11 @@ struct Transaction: Codable, Identifiable, Equatable {
         description: String? = nil,
         amount: String,
         currency: String,
-        occurredAt: String
+        occurredAt: String,
+        source: String? = nil,
+        status: String? = nil,
+        excludedFromBudget: Bool? = nil,
+        scheduleOccurrenceID: Int? = nil
     ) {
         self.id = id
         self.type = type
@@ -42,6 +50,10 @@ struct Transaction: Codable, Identifiable, Equatable {
         self.amount = amount
         self.currency = currency
         self.occurredAt = occurredAt
+        self.source = source
+        self.status = status
+        self.excludedFromBudget = excludedFromBudget
+        self.scheduleOccurrenceID = scheduleOccurrenceID
     }
 
     enum CodingKeys: String, CodingKey {
@@ -52,6 +64,10 @@ struct Transaction: Codable, Identifiable, Equatable {
         case amount
         case currency
         case occurredAt = "occurred_at"
+        case source
+        case status
+        case excludedFromBudget = "excluded_from_budget"
+        case scheduleOccurrenceID = "schedule_occurrence_id"
     }
 }
 
@@ -62,6 +78,7 @@ struct TransactionRequest: Codable, Equatable {
     let amount: String
     let currency: String
     let occurredAt: String
+    let excludedFromBudget: Bool
 
     init(
         type: String,
@@ -69,7 +86,8 @@ struct TransactionRequest: Codable, Equatable {
         description: String? = nil,
         amount: String,
         currency: String = "EUR",
-        occurredAt: String
+        occurredAt: String,
+        excludedFromBudget: Bool = false
     ) {
         self.type = type
         self.category = category
@@ -77,6 +95,7 @@ struct TransactionRequest: Codable, Equatable {
         self.amount = amount
         self.currency = currency
         self.occurredAt = occurredAt
+        self.excludedFromBudget = excludedFromBudget
     }
 
     enum CodingKeys: String, CodingKey {
@@ -86,6 +105,7 @@ struct TransactionRequest: Codable, Equatable {
         case amount
         case currency
         case occurredAt = "occurred_at"
+        case excludedFromBudget = "excluded_from_budget"
     }
 }
 
@@ -509,6 +529,15 @@ struct OpenBankingTransactionResponse: Codable, Equatable {
         case continuationKey = "continuation_key"
         case transactions
     }
+}
+
+struct OpenBankingSyncResult: Codable, Equatable {
+    let fetched: Int
+    let imported: Int
+    let updated: Int
+    let unchanged: Int
+    let ignored: Int
+    let notifications: Int
 }
 
 struct OpenBankingAccountSnapshot: Equatable {

@@ -14,9 +14,31 @@ struct AppRootView: View {
         .tint(AppColor.financeGreen)
         .task {
             await store.bootstrap()
+            if let eventType = PushEventStore.pending {
+                store.handlePushEvent(eventType)
+                PushEventStore.pending = nil
+            }
+        }
+        .task(id: store.token) {
+            guard let token = store.token, let deviceToken = PushDeviceTokenStore.current else { return }
+            await store.growth.registerPushDevice(token: token, deviceToken: deviceToken)
         }
         .onOpenURL { url in
             store.handleOpenBankingCallback(url)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pushDeviceTokenReceived)) { notification in
+            guard let token = store.token, let deviceToken = notification.object as? String else { return }
+            Task { await store.growth.registerPushDevice(token: token, deviceToken: deviceToken) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pushRegistrationFailed)) { notification in
+            if let message = notification.object as? String {
+                store.growth.error = message
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pushNotificationOpened)) { notification in
+            guard let eventType = notification.object as? String else { return }
+            store.handlePushEvent(eventType)
+            PushEventStore.pending = nil
         }
     }
 }
@@ -64,7 +86,7 @@ private struct AuthenticatedAppView: View {
         case .transactions:
             TransactionsView(store: store)
         case .investments:
-            InvestmentView()
+            InvestmentView(store: store)
         case .profile:
             ProfileView(store: store)
         }

@@ -708,7 +708,7 @@ private struct OpenBankingAccountDetailView: View {
 
                 accountActivity
 
-                SecondaryButton(title: "Refresh", systemImage: "arrow.clockwise") {
+                SecondaryButton(title: "Sync activity", systemImage: "arrow.triangle.2.circlepath") {
                     Task { await store.loadOpenBankingAccountData(accountID: account.id, force: true) }
                 }
                 .disabled(store.openBankingAccountLoadStates[account.id] == .loading)
