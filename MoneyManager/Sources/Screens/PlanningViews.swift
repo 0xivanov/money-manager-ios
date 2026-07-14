@@ -385,10 +385,19 @@ struct NotificationPreferencesView: View {
                 Toggle("Investment reminders", isOn: $preferences.investmentReminders)
             }
             Section {
-                LabeledContent("Device permission", value: authorizationStatus)
-                Button("Enable push notifications") { Task { await requestPermission() } }
+                LabeledContent(
+                    "Push notifications",
+                    value: PushConfiguration.isEnabled ? authorizationStatus : "Unavailable in this build"
+                )
+                if PushConfiguration.isEnabled {
+                    Button("Enable push notifications") { Task { await requestPermission() } }
+                }
             } footer: {
-                Text("Money Manager only sends the alert types enabled above. Bank and broker access remains read-only.")
+                Text(
+                    PushConfiguration.isEnabled
+                        ? "Money Manager only sends the alert types enabled above. Bank and broker access remains read-only."
+                        : "Push notifications are temporarily disabled until APNs signing is configured."
+                )
             }
             if let error = store.growth.error { Section { ErrorBanner(message: error) } }
         }
@@ -402,7 +411,9 @@ struct NotificationPreferencesView: View {
             guard let token = store.token else { return }
             await store.growth.loadPlanning(token: token)
             preferences = store.growth.notificationPreferences
-            await refreshAuthorizationStatus()
+            if PushConfiguration.isEnabled {
+                await refreshAuthorizationStatus()
+            }
         }
     }
 
