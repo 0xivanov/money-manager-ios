@@ -1,6 +1,11 @@
 import UIKit
 import UserNotifications
 
+enum PushConfiguration {
+    // Re-enable this after the Apple Developer account and APNs entitlement are available.
+    static let isEnabled = false
+}
+
 extension Notification.Name {
     static let pushDeviceTokenReceived = Notification.Name("MoneyManagerPushDeviceTokenReceived")
     static let pushRegistrationFailed = Notification.Name("MoneyManagerPushRegistrationFailed")
@@ -49,6 +54,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        guard PushConfiguration.isEnabled else { return true }
+
         UNUserNotificationCenter.current().delegate = self
         Task {
             let settings = await UNUserNotificationCenter.current().notificationSettings()

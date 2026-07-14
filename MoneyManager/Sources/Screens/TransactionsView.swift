@@ -100,7 +100,11 @@ struct TransactionsView: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .refreshable { await store.refresh() }
-            .searchable(text: $store.searchQuery, prompt: "Description, category, amount, or date")
+            .searchable(
+                text: $store.searchQuery,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Description, category, amount, or date"
+            )
             .appBackground()
             .navigationTitle("Transactions")
             .navigationBarTitleDisplayMode(.large)
