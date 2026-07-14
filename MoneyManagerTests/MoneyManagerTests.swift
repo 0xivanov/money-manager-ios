@@ -69,9 +69,23 @@ final class MoneyManagerTests: XCTestCase {
             occurredAt: "2026-07-11"
         )
         let data = try JSONEncoder().encode(request)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
-        XCTAssertEqual(object["description"], "Weekly groceries")
-        XCTAssertEqual(object["occurred_at"], "2026-07-11")
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["description"] as? String, "Weekly groceries")
+        XCTAssertEqual(object["occurred_at"] as? String, "2026-07-11")
+        XCTAssertEqual(object["excluded_from_budget"] as? Bool, false)
+    }
+
+    func testDecodesPlanningAndInvestmentContracts() throws {
+        let schedule = try JSONDecoder().decode(TransactionSchedule.self, from: Data(#"{"id":1,"type":"expense","name":"Rent","category":"housing","description":"","amount":"1200.00","currency":"EUR","frequency":"monthly","frequency_interval":1,"start_date":"2026-08-01","day_of_month":1,"timezone":"Europe/Sofia","auto_post":true,"status":"active","next_occurrence_date":"2026-08-01"}"#.utf8))
+        XCTAssertEqual(schedule.nextOccurrenceDate, "2026-08-01")
+        XCTAssertTrue(schedule.autoPost)
+
+        let budget = try JSONDecoder().decode(Budget.self, from: Data(#"{"id":2,"name":"Food","category":"food","amount":"500.00","currency":"EUR","period":"monthly","warning_threshold":80,"status":"active","period_start":"2026-07-01","period_end":"2026-07-31","spent_amount":"410.00","remaining_amount":"90.00","progress_percent":"82.0","alert_level":"approaching"}"#.utf8))
+        XCTAssertEqual(budget.alertLevel, "approaching")
+        XCTAssertEqual(budget.progressPercent, "82.0")
+
+        let portfolio = try JSONDecoder().decode(InvestmentPortfolio.self, from: Data(#"{"positions":[],"invested_amount":"0.00","current_value":"0.00","unrealized_profit":"0.00","realized_profit":"0.00","currency":"EUR","missing_prices":0}"#.utf8))
+        XCTAssertEqual(portfolio, .empty)
     }
 
     func testDecodesOpenBankingContractsAndProviderData() throws {
@@ -114,6 +128,11 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertEqual(transaction.title, "Fresh Market")
         XCTAssertEqual(transaction.signedAmount, Decimal(string: "-42.80"))
         XCTAssertEqual(transaction.detail, "Weekly groceries")
+
+        let syncJSON = Data(#"{"fetched":4,"imported":2,"updated":1,"unchanged":1,"ignored":0,"notifications":1}"#.utf8)
+        let sync = try JSONDecoder().decode(OpenBankingSyncResult.self, from: syncJSON)
+        XCTAssertEqual(sync.imported, 2)
+        XCTAssertEqual(sync.notifications, 1)
     }
 
     @MainActor

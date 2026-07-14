@@ -43,6 +43,24 @@ struct ProfileView: View {
                     Text("Bank connections are read-only. Broker and crypto integrations are planned for later.")
                 }
 
+                Section("Planning") {
+                    NavigationLink {
+                        ScheduledMoneyView(store: store)
+                    } label: {
+                        Label("Scheduled money", systemImage: "calendar.badge.clock")
+                    }
+                    NavigationLink {
+                        BudgetsView(store: store)
+                    } label: {
+                        Label("Budgets", systemImage: "gauge.with.dots.needle.50percent")
+                    }
+                    NavigationLink {
+                        NotificationPreferencesView(store: store)
+                    } label: {
+                        Label("Notifications", systemImage: "bell.badge")
+                    }
+                }
+
                 Section("Data") {
                     Button {
                         isImportPickerPresented = true

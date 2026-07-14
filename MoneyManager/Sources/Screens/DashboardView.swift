@@ -1,7 +1,7 @@
 import Charts
 import SwiftUI
 
-struct InvestmentView: View {
+struct LegacyInvestmentPreview: View {
     private let points = [
         InvestmentPoint(month: "Feb", value: 11_900),
         InvestmentPoint(month: "Mar", value: 12_480),
@@ -261,6 +261,10 @@ struct DashboardView: View {
                     }
                 }
             }
+            .task {
+                guard let token = store.token else { return }
+                await store.growth.loadPlanning(token: token)
+            }
         }
     }
 }
@@ -288,7 +292,54 @@ private struct DashboardContent: View {
                 .listRowBackground(Color.clear)
         }
 
+        Section("Plan") {
+            NavigationLink {
+                ScheduledMoneyView(store: store)
+            } label: {
+                PlanningLinkRow(
+                    icon: "calendar.badge.clock",
+                    title: "Scheduled money",
+                    detail: "\(store.growth.transactionSchedules.count) active plans"
+                )
+            }
+            NavigationLink {
+                BudgetsView(store: store)
+            } label: {
+                PlanningLinkRow(
+                    icon: "gauge.with.dots.needle.50percent",
+                    title: "Budgets",
+                    detail: budgetDetail
+                )
+            }
+        }
+
         RecentTransactionsSection(store: store)
+    }
+
+    private var budgetDetail: String {
+        guard !store.growth.budgets.isEmpty else { return "Set your first spending limit" }
+        let approaching = store.growth.budgets.filter { $0.alertLevel != "safe" }.count
+        return approaching == 0 ? "All budgets on track" : "\(approaching) need attention"
+    }
+}
+
+private struct PlanningLinkRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundStyle(AppColor.financeGreen)
+                .frame(width: 38, height: 38)
+                .background(AppColor.softGreenSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(detail).font(.caption).foregroundStyle(AppColor.mutedText)
+            }
+        }
     }
 }
 

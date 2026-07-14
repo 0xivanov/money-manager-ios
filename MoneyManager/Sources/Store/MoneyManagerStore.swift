@@ -66,11 +66,13 @@ final class MoneyManagerStore {
     var exportShareItem: ExportShareItem?
     var importResultMessage: String?
     var isImporting = false
+    var growth: GrowthStore
 
     init(api: MoneyManagerAPI = MoneyManagerAPI(), tokenStore: TokenStore = TokenStore()) {
         self.api = api
         self.tokenStore = tokenStore
         self.token = tokenStore.getToken()
+        self.growth = GrowthStore(api: api)
     }
 
     var isAuthenticated: Bool {
@@ -251,6 +253,9 @@ final class MoneyManagerStore {
     }
 
     func logout() {
+        if let token {
+            Task { await growth.unregisterPushDevice(token: token) }
+        }
         resetSession(clearEmail: true)
     }
 
@@ -324,6 +329,7 @@ final class MoneyManagerStore {
         isStartingOpenBankingAuthorization = false
         isDeletingOpenBankingConnection = false
         exportShareItem = nil
+        growth.reset()
         clearForm()
     }
 
@@ -364,6 +370,19 @@ final class MoneyManagerStore {
 
     func retryDashboard() {
         Task { await refresh() }
+    }
+
+    func handlePushEvent(_ eventType: String) {
+        switch eventType {
+        case "bank_spending", "scheduled_transaction_posted", "scheduled_transaction_due":
+            selectedTab = .transactions
+        case "investment_reminder":
+            selectedTab = .investments
+        case "budget_alert":
+            selectedTab = .dashboard
+        default:
+            break
+        }
     }
 
     func checkHealth() async {
@@ -532,6 +551,11 @@ final class MoneyManagerStore {
         do {
             let now = Date()
             let start = Calendar.current.date(byAdding: .day, value: -89, to: now) ?? now
+            let syncResult = try await api.syncOpenBankingAccount(
+                token: requestedToken,
+                accountID: accountID
+            )
+            try requireCurrentSession(token: requestedToken, generation: generation)
             async let balancesResult = api.getOpenBankingBalances(token: requestedToken, accountID: accountID)
             async let transactionsResult = api.getOpenBankingTransactions(
                 token: requestedToken,
@@ -549,6 +573,9 @@ final class MoneyManagerStore {
             openBankingBalances[accountID] = balances
             openBankingBalanceLoadStates[accountID] = .loaded
             openBankingAccountLoadStates[accountID] = .loaded
+            if syncResult.imported > 0 || syncResult.updated > 0 {
+                await refresh()
+            }
         } catch APIError.unauthorized {
             guard isCurrentSession(token: requestedToken, generation: generation) else { return }
             expireSession(message: APIError.unauthorized.localizedDescription)
