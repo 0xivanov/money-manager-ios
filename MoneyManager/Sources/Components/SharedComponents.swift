@@ -171,36 +171,44 @@ struct ErrorBanner: View {
 struct MonthNavigator: View {
     let month: String
     let canGoNext: Bool
-    let isLoading: Bool
     let previous: () -> Void
     let next: () -> Void
 
     var body: some View {
-        ZStack {
-            Text(DateFormat.monthDisplay(month))
-                .font(.headline)
-                .foregroundStyle(AppColor.nearBlack)
-                .accessibilityAddTraits(.isHeader)
+        VStack(spacing: 8) {
+            ZStack {
+                Text(DateFormat.monthDisplay(month))
+                    .font(.headline)
+                    .foregroundStyle(AppColor.nearBlack)
+                    .accessibilityAddTraits(.isHeader)
 
-            HStack {
-                Button(action: previous) {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 32, height: 32)
+                HStack {
+                    Button(action: previous) {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Previous month")
+
+                    Spacer()
+
+                    Button(action: next) {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canGoNext)
+                    .accessibilityLabel("Next month")
                 }
-                .disabled(isLoading)
-                .accessibilityLabel("Previous month")
-
-                Spacer()
-
-                Button(action: next) {
-                    Image(systemName: "chevron.right")
-                        .frame(width: 32, height: 32)
-                }
-                .disabled(isLoading || !canGoNext)
-                .accessibilityLabel("Next month")
             }
+
+            Rectangle()
+                .fill(AppColor.divider)
+                .frame(maxWidth: .infinity)
+                .frame(height: 1)
         }
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 

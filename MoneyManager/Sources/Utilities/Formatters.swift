@@ -73,6 +73,20 @@ enum MoneyFormat {
 }
 
 enum DateFormat {
+    private static let internetDateTime: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
+    private static let fractionalInternetDateTime: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
     static let isoDate: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -141,6 +155,21 @@ enum DateFormat {
 
     static func apiDate(_ value: String) -> Date? {
         isoDate.date(from: dateOnly(value))
+    }
+
+    static func apiTimestamp(_ date: Date) -> String {
+        internetDateTime.string(from: date)
+    }
+
+    static func apiDateTime(_ value: String) -> Date? {
+        fractionalInternetDateTime.date(from: value)
+            ?? internetDateTime.date(from: value)
+            ?? apiDate(value)
+    }
+
+    static func dateTimeDisplay(_ value: String) -> String {
+        guard let date = apiDateTime(value) else { return value }
+        return date.formatted(date: .abbreviated, time: value.contains("T") ? .shortened : .omitted)
     }
 }
 

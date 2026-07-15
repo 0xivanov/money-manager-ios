@@ -88,6 +88,115 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertEqual(portfolio, .empty)
     }
 
+    func testInvestmentAmountContractAndPortfolioHistory() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        var api = MoneyManagerAPI(baseURL: URL(string: "https://example.test")!)
+        api.session = URLSession(configuration: configuration)
+
+        let tradeRequest = InvestmentTradeRequest(
+            assetType: "crypto",
+            symbol: "BTC",
+            assetName: "Bitcoin",
+            broker: "revolut_x",
+            side: "buy",
+            amount: "125.50",
+            fees: "1.25",
+            currency: "EUR",
+            occurredAt: "2026-07-14T18:30:00Z",
+            notes: "Monthly buy"
+        )
+        let encodedTradeRequest = try JSONEncoder().encode(tradeRequest)
+        let encodedObject = try XCTUnwrap(JSONSerialization.jsonObject(with: encodedTradeRequest) as? [String: Any])
+        XCTAssertEqual(encodedObject["amount"] as? String, "125.50")
+        XCTAssertEqual(encodedObject["occurred_at"] as? String, "2026-07-14T18:30:00Z")
+        XCTAssertNil(encodedObject["quantity"])
+        XCTAssertNil(encodedObject["price_per_unit"])
+
+        MockURLProtocol.requestHandler = { request in
+            switch request.url?.path {
+            case "/investments/trades":
+                XCTAssertEqual(request.httpMethod, "POST")
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token")
+                return try MockURLProtocol.response(
+                    request: request,
+                    json: #"{"id":7,"asset_type":"crypto","symbol":"BTC","asset_name":"Bitcoin","broker":"revolut_x","side":"buy","amount":"125.50","quantity":"0.00155","price_per_unit":"80967.74","fees":"1.25","currency":"EUR","occurred_at":"2026-07-14T18:30:00Z","notes":"Monthly buy","price_provider":"kraken","price_as_of":"2026-07-14T18:30:00Z"}"#
+                )
+            case "/investments/portfolio/history":
+                let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+                XCTAssertEqual(components.queryItems?.first(where: { $0.name == "range" })?.value, "1y")
+                return try MockURLProtocol.response(
+                    request: request,
+                    json: #"{"points":[{"as_of":"2026-07-01T00:00:00Z","value":"100.00","invested_amount":"90.00"},{"as_of":"2026-07-14T18:30:00.123Z","value":"130.00","invested_amount":"125.50"}],"currency":"EUR","range":"1y","unsupported_positions":2}"#
+                )
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let trade = try await api.createInvestmentTrade(token: "token", request: tradeRequest)
+        XCTAssertEqual(trade.amount, "125.50")
+        XCTAssertEqual(trade.quantity, "0.00155")
+        XCTAssertEqual(trade.priceProvider, "kraken")
+
+        let history = try await api.getInvestmentPortfolioHistory(token: "token", range: "1y")
+        XCTAssertEqual(history.points.count, 2)
+        XCTAssertEqual(history.unsupportedPositions, 2)
+        XCTAssertNotNil(history.points.last?.date)
+    }
+
+    func testInvestmentAssetCatalogOnlyEnablesBTCAndETH() {
+        XCTAssertEqual(InvestmentAssetCatalog.tradeEnabled.map(\.symbol), ["BTC", "ETH"])
+        XCTAssertTrue(InvestmentAssetCatalog.all.filter { $0.type == .stock }.allSatisfy { !$0.isTradeEnabled })
+        XCTAssertTrue(InvestmentAssetCatalog.hasAutomaticPricing(assetType: "crypto", symbol: "btc"))
+        XCTAssertFalse(InvestmentAssetCatalog.hasAutomaticPricing(assetType: "stock", symbol: "AAPL"))
+    }
+
+    @MainActor
+    func testInvestmentLoadKeepsLedgerWhenLivePricingFails() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        var api = MoneyManagerAPI(baseURL: URL(string: "https://example.test")!)
+        api.session = URLSession(configuration: configuration)
+
+        MockURLProtocol.requestHandler = { request in
+            switch request.url?.path {
+            case "/investments/portfolio":
+                return try MockURLProtocol.response(
+                    request: request,
+                    json: #"{"error":"Crypto pricing is temporarily unavailable"}"#,
+                    statusCode: 503
+                )
+            case "/investments/trades":
+                return try MockURLProtocol.response(
+                    request: request,
+                    json: #"[{"id":7,"asset_type":"crypto","symbol":"BTC","asset_name":"Bitcoin","broker":"revolut_x","side":"buy","amount":"125.50","quantity":"0.00155","price_per_unit":"80967.74","fees":"1.25","currency":"EUR","occurred_at":"2026-07-14T18:30:00Z","notes":"Monthly buy","price_provider":"kraken","price_as_of":"2026-07-14T18:30:00Z"}]"#
+                )
+            case "/investment-schedules":
+                return try MockURLProtocol.response(request: request, json: "[]")
+            case "/investments/portfolio/history":
+                return try MockURLProtocol.response(
+                    request: request,
+                    json: #"{"points":[],"currency":"EUR","range":"1y","unsupported_positions":0}"#
+                )
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let store = GrowthStore(api: api)
+        await store.loadInvestments(token: "token")
+
+        XCTAssertEqual(store.investmentTrades.map(\.id), [7])
+        XCTAssertEqual(store.investmentSchedules, [])
+        XCTAssertEqual(store.portfolio, .empty)
+        XCTAssertEqual(store.portfolioHistory, .empty)
+        XCTAssertEqual(store.error, "Crypto pricing is temporarily unavailable")
+        XCTAssertNil(store.investmentHistoryError)
+    }
+
     func testDecodesOpenBankingContractsAndProviderData() throws {
         let institutionJSON = """
         {
@@ -195,5 +304,44 @@ final class MoneyManagerTests: XCTestCase {
 
         XCTAssertEqual(DateFormat.isoDate.string(from: store.exportFrom), "2026-05-01")
         XCTAssertEqual(DateFormat.isoDate.string(from: store.exportTo), "2026-05-31")
+    }
+}
+
+private final class MockURLProtocol: URLProtocol {
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let requestHandler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        do {
+            let (response, data) = try requestHandler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+
+    static func response(
+        request: URLRequest,
+        json: String,
+        statusCode: Int = 200
+    ) throws -> (HTTPURLResponse, Data) {
+        let url = try XCTUnwrap(request.url)
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: url,
+            statusCode: statusCode,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        ))
+        return (response, Data(json.utf8))
     }
 }

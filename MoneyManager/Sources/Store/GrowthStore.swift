@@ -11,12 +11,15 @@ final class GrowthStore {
     var budgets: [Budget] = []
     var notificationPreferences = NotificationPreferences.defaults
     var portfolio = InvestmentPortfolio.empty
+    var portfolioHistory = InvestmentPortfolioHistory.empty
     var investmentTrades: [InvestmentTrade] = []
     var investmentSchedules: [InvestmentSchedule] = []
     var isLoadingPlanning = false
     var isLoadingInvestments = false
+    var isLoadingInvestmentHistory = false
     var isSaving = false
     var error: String?
+    var investmentHistoryError: String?
     var shareItem: ExportShareItem?
 
     init(api: MoneyManagerAPI) {
@@ -29,12 +32,15 @@ final class GrowthStore {
         budgets = []
         notificationPreferences = .defaults
         portfolio = .empty
+        portfolioHistory = .empty
         investmentTrades = []
         investmentSchedules = []
         isLoadingPlanning = false
         isLoadingInvestments = false
+        isLoadingInvestmentHistory = false
         isSaving = false
         error = nil
+        investmentHistoryError = nil
         shareItem = nil
     }
 
@@ -144,21 +150,46 @@ final class GrowthStore {
     }
 
     func loadInvestments(token: String, force: Bool = false) async {
-        if isLoadingInvestments || (!force && (!portfolio.positions.isEmpty || !investmentTrades.isEmpty)) { return }
+        if isLoadingInvestments || (!force && (
+            !portfolio.positions.isEmpty || !investmentTrades.isEmpty || !portfolioHistory.points.isEmpty
+        )) { return }
         isLoadingInvestments = true
+        isLoadingInvestmentHistory = true
         error = nil
-        defer { isLoadingInvestments = false }
-        do {
-            async let portfolioResult = api.getInvestmentPortfolio(token: token)
-            async let tradesResult = api.getInvestmentTrades(token: token)
-            async let schedulesResult = api.getInvestmentSchedules(token: token)
-            let (loadedPortfolio, trades, schedules) = try await (portfolioResult, tradesResult, schedulesResult)
-            portfolio = loadedPortfolio
-            investmentTrades = trades
-            investmentSchedules = schedules
-        } catch {
-            self.error = error.localizedDescription
+        investmentHistoryError = nil
+        defer {
+            isLoadingInvestments = false
+            isLoadingInvestmentHistory = false
         }
+
+        async let portfolioResult = api.getInvestmentPortfolio(token: token)
+        async let tradesResult = api.getInvestmentTrades(token: token)
+        async let schedulesResult = api.getInvestmentSchedules(token: token)
+        async let historyResult = api.getInvestmentPortfolioHistory(token: token, range: "1y")
+
+        var loadErrors: [String] = []
+        do {
+            portfolio = try await portfolioResult
+        } catch {
+            loadErrors.append(error.localizedDescription)
+        }
+        do {
+            investmentTrades = try await tradesResult
+        } catch {
+            loadErrors.append(error.localizedDescription)
+        }
+        do {
+            investmentSchedules = try await schedulesResult
+        } catch {
+            loadErrors.append(error.localizedDescription)
+        }
+
+        do {
+            portfolioHistory = try await historyResult
+        } catch {
+            investmentHistoryError = error.localizedDescription
+        }
+        self.error = loadErrors.first
     }
 
     func createInvestmentTrade(token: String, request: InvestmentTradeRequest) async -> Bool {

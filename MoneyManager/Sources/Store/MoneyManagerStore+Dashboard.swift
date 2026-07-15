@@ -2,10 +2,9 @@ import Foundation
 
 extension MoneyManagerStore {
     var canGoNextMonth: Bool {
-        guard let current = DateFormat.monthKey.date(from: month), let now = DateFormat.monthKey.date(from: DateFormat.currentMonthKey()) else {
-            return false
-        }
-        return current < now
+        // Month keys use the sortable yyyy-MM format, so comparing the keys
+        // avoids timezone and day-boundary differences between Date values.
+        month < DateFormat.currentMonthKey()
     }
 
     var expenseCategoryTotals: [CategoryTotal] {
@@ -140,7 +139,9 @@ extension MoneyManagerStore {
     }
 
     private func moveMonth(by offset: Int) {
-        guard let date = DateFormat.monthKey.date(from: month), let nextDate = Calendar.current.date(byAdding: .month, value: offset, to: date) else {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = DateFormat.monthKey.timeZone
+        guard let date = DateFormat.monthKey.date(from: month), let nextDate = calendar.date(byAdding: .month, value: offset, to: date) else {
             return
         }
         month = DateFormat.monthKey.string(from: nextDate)

@@ -10,10 +10,11 @@ struct TransactionsView: View {
                     MonthNavigator(
                         month: store.month,
                         canGoNext: store.canGoNextMonth,
-                        isLoading: store.dashboardLoadState == .loading,
                         previous: store.previousMonth,
                         next: store.nextMonth
                     )
+                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 8, trailing: 20))
+                    .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                 }
 

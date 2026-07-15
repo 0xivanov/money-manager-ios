@@ -57,7 +57,16 @@ extension MoneyManagerAPI {
     }
 
     func getInvestmentPortfolio(token: String) async throws -> InvestmentPortfolio {
-        try await request(path: "/investments/portfolio", token: token)
+        try await request(path: "/investments/portfolio", token: token, timeoutInterval: 30)
+    }
+
+    func getInvestmentPortfolioHistory(token: String, range: String = "1y") async throws -> InvestmentPortfolioHistory {
+        try await request(
+            path: "/investments/portfolio/history",
+            token: token,
+            queryItems: [URLQueryItem(name: "range", value: range)],
+            timeoutInterval: 30
+        )
     }
 
     func getInvestmentTrades(token: String) async throws -> [InvestmentTrade] {
@@ -65,7 +74,13 @@ extension MoneyManagerAPI {
     }
 
     func createInvestmentTrade(token: String, request body: InvestmentTradeRequest) async throws -> InvestmentTrade {
-        try await request(path: "/investments/trades", method: "POST", token: token, body: body)
+        try await request(
+            path: "/investments/trades",
+            method: "POST",
+            token: token,
+            body: body,
+            timeoutInterval: 30
+        )
     }
 
     func deleteInvestmentTrade(token: String, id: Int) async throws {
