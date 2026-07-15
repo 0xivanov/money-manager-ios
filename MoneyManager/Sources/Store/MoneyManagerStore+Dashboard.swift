@@ -18,23 +18,16 @@ extension MoneyManagerStore {
             .sorted { $0.amount > $1.amount }
     }
 
-    func monthlyInvestmentSpending(currency: String) -> Decimal {
-        growth.investmentTrades.reduce(.zero) { total, trade in
-            guard
-                trade.side == "buy",
-                trade.currency.caseInsensitiveCompare(currency) == .orderedSame,
-                DateFormat.dateOnly(trade.occurredAt).hasPrefix("\(month)-")
-            else { return total }
-
-            return total
-                + MoneyFormat.decimal(from: trade.amount)
-                + MoneyFormat.decimal(from: trade.fees)
+    func investmentSpending(currency: String) -> Decimal {
+        guard growth.portfolio.currency.caseInsensitiveCompare(currency) == .orderedSame else {
+            return .zero
         }
+        return MoneyFormat.decimal(from: growth.portfolio.investedAmount)
     }
 
-    func monthlyBalanceIncludingInvestments(_ summary: TransactionSummary) -> Decimal {
+    func balanceIncludingInvestments(_ summary: TransactionSummary) -> Decimal {
         MoneyFormat.decimal(from: summary.balance)
-            - monthlyInvestmentSpending(currency: summary.currency)
+            - investmentSpending(currency: summary.currency)
     }
 
     var transactionDayBuckets: [DayBucket] {

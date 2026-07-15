@@ -233,7 +233,7 @@ struct DashboardView: View {
                     if let summary = store.summary {
                         BalanceCard(
                             summary: summary,
-                            balance: store.monthlyBalanceIncludingInvestments(summary)
+                            balance: store.balanceIncludingInvestments(summary)
                         )
                             .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                             .listRowBackground(Color.clear)
@@ -297,7 +297,7 @@ private struct DashboardContent: View {
         Section {
             SummaryMetrics(
                 summary: summary,
-                investmentSpending: store.monthlyInvestmentSpending(currency: summary.currency)
+                investmentSpending: store.investmentSpending(currency: summary.currency)
             )
                 .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
                 .listRowBackground(Color.clear)
