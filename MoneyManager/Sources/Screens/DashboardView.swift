@@ -231,7 +231,10 @@ struct DashboardView: View {
                     .listRowBackground(Color.clear)
 
                     if let summary = store.summary {
-                        BalanceCard(summary: summary)
+                        BalanceCard(
+                            summary: summary,
+                            balance: store.monthlyBalanceIncludingInvestments(summary)
+                        )
                             .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                             .listRowBackground(Color.clear)
                     } else {
@@ -292,7 +295,10 @@ private struct DashboardContent: View {
         }
 
         Section {
-            SummaryMetrics(summary: summary)
+            SummaryMetrics(
+                summary: summary,
+                investmentSpending: store.monthlyInvestmentSpending(currency: summary.currency)
+            )
                 .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
                 .listRowBackground(Color.clear)
         }
@@ -407,6 +413,7 @@ private struct DashboardFailureState: View {
 
 private struct BalanceCard: View {
     let summary: TransactionSummary
+    let balance: Decimal
 
     var body: some View {
         AppCard(color: AppColor.softGreenSurface, padding: 24) {
@@ -414,12 +421,12 @@ private struct BalanceCard: View {
                 Label("Monthly balance", systemImage: "wallet.bifold.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppColor.financeGreen)
-                Text(MoneyFormat.amount(MoneyFormat.decimal(from: summary.balance), currency: summary.currency))
+                Text(MoneyFormat.amount(balance, currency: summary.currency))
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .foregroundStyle(AppColor.nearBlack)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
-                Text("Income minus spending for this month")
+                Text("Income minus expenses and investments for this month")
                     .font(.footnote)
                     .foregroundStyle(AppColor.mutedText)
             }
@@ -430,6 +437,7 @@ private struct BalanceCard: View {
 
 private struct SummaryMetrics: View {
     let summary: TransactionSummary
+    let investmentSpending: Decimal
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -443,6 +451,11 @@ private struct SummaryMetrics: View {
                 label: "Expenses",
                 value: MoneyFormat.amount(MoneyFormat.decimal(from: summary.expense), currency: summary.currency),
                 tint: AppColor.expense
+            )
+            MetricTile(
+                label: "Investments",
+                value: MoneyFormat.amount(investmentSpending, currency: summary.currency),
+                tint: AppColor.crypto
             )
         }
     }

@@ -276,6 +276,30 @@ final class MoneyManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testMonthlyInvestmentSpendingAdjustsDashboardBalance() throws {
+        let store = MoneyManagerStore()
+        store.month = "2026-07"
+        store.growth.investmentTrades = try JSONDecoder().decode([InvestmentTrade].self, from: Data(#"""
+        [
+          {"id":1,"asset_type":"crypto","symbol":"BTC","asset_name":"Bitcoin","broker":"revolut_x","side":"buy","amount":"125.50","quantity":"0.00155","price_per_unit":"80967.74","fees":"1.25","currency":"EUR","occurred_at":"2026-07-14T18:30:00Z","notes":"","price_provider":"kraken","price_as_of":"2026-07-14T18:30:00Z"},
+          {"id":2,"asset_type":"crypto","symbol":"ETH","asset_name":"Ethereum","broker":"revolut_x","side":"sell","amount":"50.00","quantity":"0.02","price_per_unit":"2500.00","fees":"0.50","currency":"EUR","occurred_at":"2026-07-20T10:00:00Z","notes":"","price_provider":"kraken","price_as_of":"2026-07-20T10:00:00Z"},
+          {"id":3,"asset_type":"crypto","symbol":"BTC","asset_name":"Bitcoin","broker":"revolut_x","side":"buy","amount":"75.00","quantity":"0.001","price_per_unit":"75000.00","fees":"0.75","currency":"EUR","occurred_at":"2026-06-10T10:00:00Z","notes":"","price_provider":"kraken","price_as_of":"2026-06-10T10:00:00Z"}
+        ]
+        """#.utf8))
+        let summary = TransactionSummary(
+            month: "2026-07",
+            income: "2000.00",
+            expense: "500.00",
+            balance: "1500.00",
+            currency: "EUR",
+            transactionCount: 4
+        )
+
+        XCTAssertEqual(store.monthlyInvestmentSpending(currency: "EUR"), Decimal(string: "126.75"))
+        XCTAssertEqual(store.monthlyBalanceIncludingInvestments(summary), Decimal(string: "1373.25"))
+    }
+
+    @MainActor
     func testTransactionSearchAndCategoryFilters() {
         let store = MoneyManagerStore()
         store.transactions = [
