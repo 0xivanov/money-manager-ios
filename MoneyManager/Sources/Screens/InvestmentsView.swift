@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 struct InvestmentView: View {
@@ -10,6 +11,7 @@ struct InvestmentView: View {
                 LazyVStack(alignment: .leading, spacing: 18) {
                     header
                     portfolioCard
+                    InvestmentPortfolioHistoryCard(store: store)
                     if let error = store.growth.error { ErrorBanner(message: error) }
                     positionsSection
                     plansSection
@@ -104,7 +106,7 @@ struct InvestmentView: View {
                     VStack(spacing: 10) {
                         Image(systemName: "chart.line.uptrend.xyaxis").font(.largeTitle).foregroundStyle(AppColor.financeGreen)
                         Text("Build your portfolio ledger").font(.headline)
-                        Text("Record buys and sells for BTC, ETH, or stocks. Prices can be entered manually until automatic market data is enabled.")
+                        Text("Record BTC or ETH buys and sells. The execution price and crypto quantity are calculated automatically.")
                             .font(.subheadline).foregroundStyle(AppColor.mutedText).multilineTextAlignment(.center)
                         SecondaryButton(title: "Record first trade", systemImage: "plus") { sheet = .trade }
                     }
@@ -112,9 +114,13 @@ struct InvestmentView: View {
                 }
             } else {
                 ForEach(store.growth.portfolio.positions) { position in
-                    Button { sheet = .price(position) } label: { InvestmentPositionRow(position: position) }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens manual price editor")
+                    if InvestmentAssetCatalog.hasAutomaticPricing(assetType: position.assetType, symbol: position.symbol) {
+                        InvestmentPositionRow(position: position)
+                    } else {
+                        Button { sheet = .price(position) } label: { InvestmentPositionRow(position: position) }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens manual price editor for this unsupported asset")
+                    }
                 }
             }
         }
@@ -159,7 +165,7 @@ struct InvestmentView: View {
                 Image(systemName: "doc.text.magnifyingglass").font(.title2).foregroundStyle(AppColor.financeGreen)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Audit-ready history").font(.headline).foregroundStyle(AppColor.nearBlack)
-                    Text("Export all recorded buys, sells, prices, fees, brokers, and notes as CSV.")
+                    Text("Export amounts, calculated quantities and prices, fees, brokers, and notes as CSV.")
                         .font(.caption).foregroundStyle(AppColor.mutedText)
                 }
                 Spacer()
@@ -223,6 +229,200 @@ private struct PortfolioMetric: View {
     }
 }
 
+private struct InvestmentPortfolioHistoryCard: View {
+    @Bindable var store: MoneyManagerStore
+
+    var body: some View {
+        AppCard(padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Portfolio history")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(AppColor.nearBlack)
+                        Text(rangeTitle)
+                            .font(.caption)
+                            .foregroundStyle(AppColor.mutedText)
+                    }
+                    Spacer()
+                    if let last = points.last {
+                        Text(money(last.value))
+                            .font(.subheadline.weight(.bold).monospacedDigit())
+                            .foregroundStyle(AppColor.nearBlack)
+                    }
+                }
+
+                chartContent
+
+                if !points.isEmpty {
+                    HStack(spacing: 16) {
+                        chartLegend(color: AppColor.financeGreen, title: "Value")
+                        chartLegend(color: AppColor.mutedText, title: "Invested", dashed: true)
+                    }
+                }
+
+                if store.growth.portfolioHistory.unsupportedPositions > 0 {
+                    Label(
+                        unsupportedPositionsMessage,
+                        systemImage: "info.circle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chartContent: some View {
+        if store.growth.isLoadingInvestmentHistory && points.isEmpty {
+            VStack(spacing: 10) {
+                ProgressView()
+                Text("Building your portfolio history")
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+            }
+            .frame(maxWidth: .infinity, minHeight: 180)
+            .accessibilityElement(children: .combine)
+        } else if let error = store.growth.investmentHistoryError, points.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "chart.line.downtrend.xyaxis")
+                    .font(.title2)
+                    .foregroundStyle(AppColor.mutedText)
+                Text("Portfolio history is unavailable")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppColor.nearBlack)
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, minHeight: 180)
+            .accessibilityElement(children: .combine)
+        } else if points.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.title2)
+                    .foregroundStyle(AppColor.financeGreen)
+                Text("No portfolio history yet")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppColor.nearBlack)
+                Text("Your chart will appear after the first BTC or ETH trade.")
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, minHeight: 180)
+            .accessibilityElement(children: .combine)
+        } else {
+            Chart(points) { point in
+                AreaMark(
+                    x: .value("Date", point.date ?? .distantPast),
+                    y: .value("Portfolio value", double(point.value))
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [AppColor.financeGreen.opacity(0.28), AppColor.financeGreen.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+                LineMark(
+                    x: .value("Date", point.date ?? .distantPast),
+                    y: .value("Portfolio value", double(point.value)),
+                    series: .value("Series", "Portfolio value")
+                )
+                .foregroundStyle(AppColor.financeGreen)
+                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+                LineMark(
+                    x: .value("Date", point.date ?? .distantPast),
+                    y: .value("Invested amount", double(point.investedAmount)),
+                    series: .value("Series", "Invested amount")
+                )
+                .foregroundStyle(AppColor.mutedText)
+                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+
+                PointMark(
+                    x: .value("Date", point.date ?? .distantPast),
+                    y: .value("Portfolio value", double(point.value))
+                )
+                .foregroundStyle(AppColor.financeGreen)
+                .symbolSize(14)
+            }
+            .chartLegend(.hidden)
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) {
+                    AxisGridLine().foregroundStyle(AppColor.divider)
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) {
+                    AxisGridLine().foregroundStyle(AppColor.divider)
+                    AxisValueLabel()
+                }
+            }
+            .chartXScale(range: .plotDimension(startPadding: 10, endPadding: 10))
+            .frame(height: 190)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Portfolio value for the last year")
+            .accessibilityValue(chartAccessibilityValue)
+        }
+    }
+
+    private var points: [InvestmentPortfolioHistoryPoint] {
+        store.growth.portfolioHistory.points
+            .filter { $0.date != nil }
+            .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
+    }
+
+    private var rangeTitle: String {
+        switch store.growth.portfolioHistory.range {
+        case "1m": "Last month"
+        case "3m": "Last 3 months"
+        case "1y": "Last year"
+        case "all": "All time"
+        default: store.growth.portfolioHistory.range.uppercased()
+        }
+    }
+
+    private var chartAccessibilityValue: String {
+        guard let first = points.first, let last = points.last else { return "No history available" }
+        return "From \(money(first.value)) to \(money(last.value)). Invested amount \(money(last.investedAmount))."
+    }
+
+    private var unsupportedPositionsMessage: String {
+        let count = store.growth.portfolioHistory.unsupportedPositions
+        return count == 1
+            ? "1 stock position is excluded"
+            : "\(count) stock positions are excluded"
+    }
+
+    private func money(_ value: String) -> String {
+        MoneyFormat.amount(
+            MoneyFormat.decimal(from: value),
+            currency: store.growth.portfolioHistory.currency
+        )
+    }
+
+    private func double(_ value: String) -> Double {
+        NSDecimalNumber(decimal: MoneyFormat.decimal(from: value)).doubleValue
+    }
+
+    private func chartLegend(color: Color, title: String, dashed: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Capsule()
+                .stroke(color, style: StrokeStyle(lineWidth: 2, dash: dashed ? [4, 3] : []))
+                .frame(width: 20, height: 2)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(AppColor.mutedText)
+        }
+    }
+}
+
 private struct InvestmentPositionRow: View {
     let position: InvestmentPosition
 
@@ -266,10 +466,20 @@ private struct InvestmentTradeRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(categoryTitle(trade.side)) \(trade.symbol)").font(.subheadline.weight(.semibold))
-                Text("\(trade.occurredAt) · \(trade.quantity) @ \(MoneyFormat.amount(MoneyFormat.decimal(from: trade.pricePerUnit), currency: trade.currency))")
-                    .font(.caption).foregroundStyle(AppColor.mutedText)
+                Text("\(trade.quantity) \(trade.symbol) @ \(MoneyFormat.amount(MoneyFormat.decimal(from: trade.pricePerUnit), currency: trade.currency))")
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+                    .lineLimit(1)
+                Text(priceTimestamp)
+                    .font(.caption2)
+                    .foregroundStyle(AppColor.mutedText)
             }
             Spacer()
+            Text(MoneyFormat.amount(MoneyFormat.decimal(from: trade.amount), currency: trade.currency))
+                .font(.subheadline.weight(.bold).monospacedDigit())
+                .foregroundStyle(AppColor.nearBlack)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             Menu {
                 Button("Delete trade", role: .destructive) {
                     guard let token = store.token else { return }
@@ -280,6 +490,11 @@ private struct InvestmentTradeRow: View {
             }
         }
         .padding(.vertical, 5)
+    }
+
+    private var priceTimestamp: String {
+        let provider = trade.priceProvider.map { " · \(categoryTitle($0))" } ?? ""
+        return "\(DateFormat.dateTimeDisplay(trade.occurredAt))\(provider)"
     }
 }
 
@@ -320,13 +535,10 @@ private struct InvestmentScheduleRow: View {
 private struct InvestmentTradeEditor: View {
     @Bindable var store: MoneyManagerStore
     @Binding var isPresented: Bool
-    @State private var assetType = "crypto"
-    @State private var symbol = "BTC"
-    @State private var assetName = "Bitcoin"
+    @State private var selectedAsset = InvestmentAssetCatalog.bitcoin
     @State private var broker = "revolut_x"
     @State private var side = "buy"
-    @State private var quantity = ""
-    @State private var price = ""
+    @State private var amount = ""
     @State private var fees = "0"
     @State private var occurredAt = Date()
     @State private var notes = ""
@@ -335,32 +547,31 @@ private struct InvestmentTradeEditor: View {
         NavigationStack {
             Form {
                 Section("Asset") {
-                    Picker("Type", selection: $assetType) {
-                        Text("Crypto").tag("crypto")
-                        Text("Stock").tag("stock")
-                    }.pickerStyle(.segmented)
-                    if assetType == "crypto" {
-                        Picker("Asset", selection: $symbol) {
-                            Text("Bitcoin (BTC)").tag("BTC")
-                            Text("Ethereum (ETH)").tag("ETH")
+                    Picker("Asset", selection: $selectedAsset) {
+                        ForEach(InvestmentAssetCatalog.tradeEnabled) { asset in
+                            Text("\(asset.name) (\(asset.symbol))").tag(asset)
                         }
-                    } else {
-                        TextField("Ticker, for example AAPL", text: $symbol).textInputAutocapitalization(.characters)
-                        TextField("Company name", text: $assetName)
                     }
                     Picker("Broker", selection: $broker) {
                         Text("Manual").tag("manual")
-                        if assetType == "crypto" { Text("Revolut X").tag("revolut_x") }
-                        if assetType == "stock" { Text("Trading 212").tag("trading212") }
+                        Text("Revolut X").tag("revolut_x")
                     }
                 }
-                Section("Trade") {
+                Section {
                     Picker("Side", selection: $side) { Text("Buy").tag("buy"); Text("Sell").tag("sell") }.pickerStyle(.segmented)
-                    TextField("Quantity", text: $quantity).keyboardType(.decimalPad)
-                    TextField("Price per unit in EUR", text: $price).keyboardType(.decimalPad)
+                    TextField("Amount in EUR", text: $amount).keyboardType(.decimalPad)
                     TextField("Fees in EUR", text: $fees).keyboardType(.decimalPad)
-                    DatePicker("Date", selection: $occurredAt, in: ...Date(), displayedComponents: .date)
+                    DatePicker(
+                        "Executed at",
+                        selection: $occurredAt,
+                        in: ...Date(),
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
                     TextField("Notes", text: $notes, axis: .vertical)
+                } header: {
+                    Text("Trade")
+                } footer: {
+                    Text("The backend looks up the market price at this time and calculates the BTC or ETH quantity.")
                 }
                 if let error = store.growth.error { Section { ErrorBanner(message: error) } }
             }
@@ -370,26 +581,46 @@ private struct InvestmentTradeEditor: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await save() } }
-                        .disabled(quantity.isEmpty || price.isEmpty || symbol.isEmpty || store.growth.isSaving)
+                        .disabled(!canSave || store.growth.isSaving)
                 }
-            }
-            .onChange(of: assetType) { _, value in
-                if value == "crypto" { symbol = "BTC"; assetName = "Bitcoin"; broker = "revolut_x" }
-                else { symbol = ""; assetName = ""; broker = "trading212" }
-            }
-            .onChange(of: symbol) { _, value in
-                if assetType == "crypto" { assetName = value == "BTC" ? "Bitcoin" : "Ethereum" }
             }
         }
     }
 
+    private var parsedAmount: Decimal? {
+        MoneyFormat.inputDecimal(from: amount)
+    }
+
+    private var parsedFees: Decimal? {
+        fees.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? .zero
+            : MoneyFormat.inputDecimal(from: fees)
+    }
+
+    private var canSave: Bool {
+        guard let parsedAmount, let parsedFees else { return false }
+        return parsedAmount > .zero && parsedFees >= .zero
+    }
+
     private func save() async {
-        guard let token = store.token else { return }
+        guard
+            let token = store.token,
+            let parsedAmount,
+            let parsedFees,
+            parsedAmount > .zero,
+            parsedFees >= .zero
+        else { return }
         let request = InvestmentTradeRequest(
-            assetType: assetType, symbol: symbol.uppercased(), assetName: assetName,
-            broker: broker, side: side, quantity: normalizedNumericInput(quantity),
-            pricePerUnit: normalizedNumericInput(price), fees: normalizedNumericInput(fees),
-            currency: "EUR", occurredAt: DateFormat.isoDate.string(from: occurredAt), notes: notes
+            assetType: selectedAsset.type.rawValue,
+            symbol: selectedAsset.symbol,
+            assetName: selectedAsset.name,
+            broker: broker,
+            side: side,
+            amount: MoneyFormat.apiAmount(parsedAmount),
+            fees: MoneyFormat.apiAmount(parsedFees),
+            currency: "EUR",
+            occurredAt: DateFormat.apiTimestamp(occurredAt),
+            notes: notes
         )
         if await store.growth.createInvestmentTrade(token: token, request: request) { isPresented = false }
     }
@@ -433,9 +664,7 @@ private struct InvestmentPriceEditor: View {
 private struct InvestmentScheduleEditor: View {
     @Bindable var store: MoneyManagerStore
     @Binding var isPresented: Bool
-    @State private var assetType = "crypto"
-    @State private var symbol = "BTC"
-    @State private var assetName = "Bitcoin"
+    @State private var selectedAsset = InvestmentAssetCatalog.bitcoin
     @State private var broker = "revolut_x"
     @State private var amount = ""
     @State private var frequency = "monthly"
@@ -446,17 +675,14 @@ private struct InvestmentScheduleEditor: View {
         NavigationStack {
             Form {
                 Section("Asset") {
-                    Picker("Type", selection: $assetType) { Text("Crypto").tag("crypto"); Text("Stock").tag("stock") }.pickerStyle(.segmented)
-                    if assetType == "crypto" {
-                        Picker("Asset", selection: $symbol) { Text("Bitcoin (BTC)").tag("BTC"); Text("Ethereum (ETH)").tag("ETH") }
-                    } else {
-                        TextField("Ticker", text: $symbol).textInputAutocapitalization(.characters)
-                        TextField("Company name", text: $assetName)
+                    Picker("Asset", selection: $selectedAsset) {
+                        ForEach(InvestmentAssetCatalog.tradeEnabled) { asset in
+                            Text("\(asset.name) (\(asset.symbol))").tag(asset)
+                        }
                     }
                     Picker("Broker", selection: $broker) {
                         Text("Manual").tag("manual")
-                        if assetType == "crypto" { Text("Revolut X").tag("revolut_x") }
-                        if assetType == "stock" { Text("Trading 212").tag("trading212") }
+                        Text("Revolut X").tag("revolut_x")
                     }
                 }
                 Section("Plan") {
@@ -473,14 +699,9 @@ private struct InvestmentScheduleEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { Task { await save() } }.disabled(amount.isEmpty || symbol.isEmpty || store.growth.isSaving)
+                    Button("Save") { Task { await save() } }.disabled(amount.isEmpty || store.growth.isSaving)
                 }
             }
-            .onChange(of: assetType) { _, value in
-                if value == "crypto" { symbol = "BTC"; assetName = "Bitcoin"; broker = "revolut_x" }
-                else { symbol = ""; assetName = ""; broker = "trading212" }
-            }
-            .onChange(of: symbol) { _, value in if assetType == "crypto" { assetName = value == "BTC" ? "Bitcoin" : "Ethereum" } }
         }
     }
 
@@ -488,7 +709,10 @@ private struct InvestmentScheduleEditor: View {
         guard let token = store.token else { return }
         let weekday = Calendar.current.component(.weekday, from: startDate)
         let request = InvestmentScheduleRequest(
-            assetType: assetType, symbol: symbol.uppercased(), assetName: assetName, broker: broker,
+            assetType: selectedAsset.type.rawValue,
+            symbol: selectedAsset.symbol,
+            assetName: selectedAsset.name,
+            broker: broker,
             amount: normalizedNumericInput(amount), currency: "EUR", frequency: frequency,
             frequencyInterval: interval, startDate: DateFormat.isoDate.string(from: startDate), endDate: nil,
             dayOfWeek: frequency == "weekly" ? (weekday == 1 ? 7 : weekday - 1) : nil,
@@ -510,7 +734,7 @@ private struct InvestmentExportView: View {
             Form {
                 DatePicker("From", selection: $from, in: ...through, displayedComponents: .date)
                 DatePicker("Through", selection: $through, in: from...Date(), displayedComponents: .date)
-                Section { Text("The CSV includes the exact trade date, asset, broker, side, quantity, price, fees, currency, and notes.") }
+                Section { Text("The CSV includes the exact execution time, asset, broker, side, entered amount, calculated quantity and price, fees, provider, currency, and notes.") }
                 if let error = store.growth.error { Section { ErrorBanner(message: error) } }
             }
             .navigationTitle("Audit export")
@@ -575,9 +799,22 @@ struct GrowthPreviewHost: View {
             investedAmount: "5275.62", currentValue: nil, unrealizedProfit: nil,
             realizedProfit: "42.00", currency: "EUR", missingPrices: 1
         )
+        store.growth.portfolioHistory = InvestmentPortfolioHistory(
+            points: [
+                InvestmentPortfolioHistoryPoint(asOf: "2026-02-01T00:00:00Z", value: "1200.00", investedAmount: "1200.00"),
+                InvestmentPortfolioHistoryPoint(asOf: "2026-03-01T00:00:00Z", value: "1960.00", investedAmount: "1800.00"),
+                InvestmentPortfolioHistoryPoint(asOf: "2026-04-01T00:00:00Z", value: "2650.00", investedAmount: "2500.00"),
+                InvestmentPortfolioHistoryPoint(asOf: "2026-05-01T00:00:00Z", value: "3120.00", investedAmount: "3100.00"),
+                InvestmentPortfolioHistoryPoint(asOf: "2026-06-01T00:00:00Z", value: "4010.00", investedAmount: "3900.00"),
+                InvestmentPortfolioHistoryPoint(asOf: "2026-07-13T20:00:00Z", value: "5420.10", investedAmount: "4536.00"),
+            ],
+            currency: "EUR",
+            range: "1y",
+            unsupportedPositions: 1
+        )
         store.growth.investmentTrades = [
-            InvestmentTrade(id: 2, assetType: "crypto", symbol: "BTC", assetName: "Bitcoin", broker: "revolut_x", side: "buy", quantity: "0.02", pricePerUnit: "62000", fees: "1.50", currency: "EUR", occurredAt: "2026-07-10", notes: "Monthly buy"),
-            InvestmentTrade(id: 1, assetType: "stock", symbol: "AAPL", assetName: "Apple", broker: "trading212", side: "buy", quantity: "4.2", pricePerUnit: "176.10", fees: "0", currency: "EUR", occurredAt: "2026-06-15", notes: ""),
+            InvestmentTrade(id: 2, assetType: "crypto", symbol: "BTC", assetName: "Bitcoin", broker: "revolut_x", side: "buy", amount: "1240.00", quantity: "0.02", pricePerUnit: "62000", fees: "1.50", currency: "EUR", occurredAt: "2026-07-10T08:30:00Z", notes: "Monthly buy", priceProvider: "kraken", priceAsOf: "2026-07-10T08:30:00Z"),
+            InvestmentTrade(id: 1, assetType: "stock", symbol: "AAPL", assetName: "Apple", broker: "trading212", side: "buy", amount: "739.62", quantity: "4.2", pricePerUnit: "176.10", fees: "0", currency: "EUR", occurredAt: "2026-06-15T10:15:00Z", notes: "", priceProvider: nil, priceAsOf: nil),
         ]
         store.growth.investmentSchedules = [
             InvestmentSchedule(id: 1, assetType: "crypto", symbol: "BTC", assetName: "Bitcoin", broker: "revolut_x", amount: "100.00", currency: "EUR", frequency: "monthly", frequencyInterval: 1, startDate: "2026-07-15", endDate: nil, dayOfWeek: nil, dayOfMonth: 15, timezone: "Europe/Sofia", status: "active", nextOccurrence: "2026-07-15")

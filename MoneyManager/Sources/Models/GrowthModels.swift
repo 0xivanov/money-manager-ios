@@ -187,19 +187,24 @@ struct InvestmentTrade: Codable, Identifiable, Equatable {
     let assetName: String
     let broker: String
     let side: String
+    let amount: String
     let quantity: String
     let pricePerUnit: String
     let fees: String
     let currency: String
     let occurredAt: String
     let notes: String
+    let priceProvider: String?
+    let priceAsOf: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, symbol, broker, side, quantity, fees, currency, notes
+        case id, symbol, broker, side, amount, quantity, fees, currency, notes
         case assetType = "asset_type"
         case assetName = "asset_name"
         case pricePerUnit = "price_per_unit"
         case occurredAt = "occurred_at"
+        case priceProvider = "price_provider"
+        case priceAsOf = "price_as_of"
     }
 }
 
@@ -209,19 +214,70 @@ struct InvestmentTradeRequest: Codable, Equatable {
     let assetName: String
     let broker: String
     let side: String
-    let quantity: String
-    let pricePerUnit: String
+    let amount: String
     let fees: String
     let currency: String
     let occurredAt: String
     let notes: String
 
     enum CodingKeys: String, CodingKey {
-        case symbol, broker, side, quantity, fees, currency, notes
+        case symbol, broker, side, amount, fees, currency, notes
         case assetType = "asset_type"
         case assetName = "asset_name"
-        case pricePerUnit = "price_per_unit"
         case occurredAt = "occurred_at"
+    }
+}
+
+enum InvestmentAssetType: String, Codable, Hashable {
+    case crypto
+    case stock
+}
+
+struct InvestmentAssetDefinition: Identifiable, Equatable, Hashable {
+    let type: InvestmentAssetType
+    let symbol: String
+    let name: String
+    let isTradeEnabled: Bool
+
+    var id: String { "\(type.rawValue):\(symbol)" }
+}
+
+enum InvestmentAssetCatalog {
+    static let bitcoin = InvestmentAssetDefinition(
+        type: .crypto,
+        symbol: "BTC",
+        name: "Bitcoin",
+        isTradeEnabled: true
+    )
+    static let ethereum = InvestmentAssetDefinition(
+        type: .crypto,
+        symbol: "ETH",
+        name: "Ethereum",
+        isTradeEnabled: true
+    )
+
+    // Stock definitions stay in the catalog so adding a market-data provider
+    // later does not require another editor or portfolio-model redesign.
+    static let apple = InvestmentAssetDefinition(
+        type: .stock,
+        symbol: "AAPL",
+        name: "Apple",
+        isTradeEnabled: false
+    )
+    static let microsoft = InvestmentAssetDefinition(
+        type: .stock,
+        symbol: "MSFT",
+        name: "Microsoft",
+        isTradeEnabled: false
+    )
+
+    static let all = [bitcoin, ethereum, apple, microsoft]
+    static let tradeEnabled = all.filter(\.isTradeEnabled)
+
+    static func hasAutomaticPricing(assetType: String, symbol: String) -> Bool {
+        tradeEnabled.contains {
+            $0.type.rawValue == assetType && $0.symbol.caseInsensitiveCompare(symbol) == .orderedSame
+        }
     }
 }
 
@@ -281,6 +337,40 @@ struct InvestmentPortfolio: Codable, Equatable {
     static let empty = InvestmentPortfolio(
         positions: [], investedAmount: "0.00", currentValue: "0.00",
         unrealizedProfit: "0.00", realizedProfit: "0.00", currency: "EUR", missingPrices: 0
+    )
+}
+
+struct InvestmentPortfolioHistoryPoint: Codable, Identifiable, Equatable {
+    let asOf: String
+    let value: String
+    let investedAmount: String
+
+    var id: String { asOf }
+    var date: Date? { DateFormat.apiDateTime(asOf) }
+
+    enum CodingKeys: String, CodingKey {
+        case value
+        case asOf = "as_of"
+        case investedAmount = "invested_amount"
+    }
+}
+
+struct InvestmentPortfolioHistory: Codable, Equatable {
+    let points: [InvestmentPortfolioHistoryPoint]
+    let currency: String
+    let range: String
+    let unsupportedPositions: Int
+
+    enum CodingKeys: String, CodingKey {
+        case points, currency, range
+        case unsupportedPositions = "unsupported_positions"
+    }
+
+    static let empty = InvestmentPortfolioHistory(
+        points: [],
+        currency: "EUR",
+        range: "1y",
+        unsupportedPositions: 0
     )
 }
 

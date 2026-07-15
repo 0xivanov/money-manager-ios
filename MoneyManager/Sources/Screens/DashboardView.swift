@@ -223,14 +223,18 @@ struct DashboardView: View {
                     MonthNavigator(
                         month: store.month,
                         canGoNext: store.canGoNextMonth,
-                        isLoading: store.dashboardLoadState == .loading,
                         previous: store.previousMonth,
                         next: store.nextMonth
                     )
+                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 8, trailing: 20))
+                    .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
 
                     if let summary = store.summary {
-                        BalanceCard(summary: summary)
+                        BalanceCard(
+                            summary: summary,
+                            balance: store.balanceIncludingInvestments(summary)
+                        )
                             .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                             .listRowBackground(Color.clear)
                     } else {
@@ -251,7 +255,7 @@ struct DashboardView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
-            .refreshable { await store.refresh() }
+            .refreshable { await refreshHome() }
             .appBackground()
             .navigationTitle("Overview")
             .toolbar {
@@ -263,9 +267,19 @@ struct DashboardView: View {
             }
             .task {
                 guard let token = store.token else { return }
-                await store.growth.loadPlanning(token: token)
+                async let planning: Void = store.growth.loadPlanning(token: token)
+                async let investments: Void = store.growth.loadInvestments(token: token)
+                _ = await (planning, investments)
             }
         }
+    }
+
+    private func refreshHome() async {
+        guard let token = store.token else { return }
+        async let transactions: Void = store.refresh()
+        async let planning: Void = store.growth.loadPlanning(token: token, force: true)
+        async let investments: Void = store.growth.loadInvestments(token: token, force: true)
+        _ = await (transactions, planning, investments)
     }
 }
 
@@ -281,7 +295,16 @@ private struct DashboardContent: View {
         }
 
         Section {
-            SummaryMetrics(summary: summary)
+            SummaryMetrics(
+                summary: summary,
+                investmentSpending: store.investmentSpending(currency: summary.currency)
+            )
+                .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
+                .listRowBackground(Color.clear)
+        }
+
+        Section("Investments") {
+            DashboardInvestmentCard(store: store)
                 .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
                 .listRowBackground(Color.clear)
         }
@@ -390,6 +413,7 @@ private struct DashboardFailureState: View {
 
 private struct BalanceCard: View {
     let summary: TransactionSummary
+    let balance: Decimal
 
     var body: some View {
         AppCard(color: AppColor.softGreenSurface, padding: 24) {
@@ -397,12 +421,12 @@ private struct BalanceCard: View {
                 Label("Monthly balance", systemImage: "wallet.bifold.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppColor.financeGreen)
-                Text(MoneyFormat.amount(MoneyFormat.decimal(from: summary.balance), currency: summary.currency))
+                Text(MoneyFormat.amount(balance, currency: summary.currency))
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .foregroundStyle(AppColor.nearBlack)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
-                Text("Income minus spending for this month")
+                Text("Income minus expenses and investments for this month")
                     .font(.footnote)
                     .foregroundStyle(AppColor.mutedText)
             }
@@ -413,6 +437,7 @@ private struct BalanceCard: View {
 
 private struct SummaryMetrics: View {
     let summary: TransactionSummary
+    let investmentSpending: Decimal
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -427,7 +452,11 @@ private struct SummaryMetrics: View {
                 value: MoneyFormat.amount(MoneyFormat.decimal(from: summary.expense), currency: summary.currency),
                 tint: AppColor.expense
             )
-            MetricTile(label: "Entries", value: "\(summary.transactionCount)", tint: AppColor.nearBlack)
+            MetricTile(
+                label: "Investments",
+                value: MoneyFormat.amount(investmentSpending, currency: summary.currency),
+                tint: AppColor.crypto
+            )
         }
     }
 
@@ -436,6 +465,124 @@ private struct SummaryMetrics: View {
             return [GridItem(.flexible())]
         }
         return [GridItem(.adaptive(minimum: 100), spacing: 12)]
+    }
+}
+
+private struct DashboardInvestmentCard: View {
+    @Bindable var store: MoneyManagerStore
+
+    var body: some View {
+        Button {
+            store.selectedTab = .investments
+        } label: {
+            AppCard(color: AppColor.invertedSurface, padding: 18) {
+                if store.growth.isLoadingInvestments && hasNoInvestmentData {
+                    HStack(spacing: 12) {
+                        ProgressView().tint(AppColor.inverseText)
+                        Text("Loading portfolio")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppColor.inverseText)
+                        Spacer()
+                    }
+                } else if hasNoInvestmentData {
+                    HStack(spacing: 14) {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(AppColor.crypto)
+                            .frame(width: 44, height: 44)
+                            .background(AppColor.crypto.opacity(0.14))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("No investments yet")
+                                .font(.headline)
+                                .foregroundStyle(AppColor.inverseText)
+                            Text("Record a BTC or ETH purchase")
+                                .font(.caption)
+                                .foregroundStyle(AppColor.inverseText.opacity(0.66))
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(AppColor.inverseText.opacity(0.55))
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("PORTFOLIO VALUE")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppColor.inverseText.opacity(0.62))
+                                Text(portfolioValue)
+                                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                                    .foregroundStyle(AppColor.inverseText)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(AppColor.inverseText.opacity(0.55))
+                        }
+                        HStack(spacing: 18) {
+                            compactMetric("INVESTED", value: money(store.growth.portfolio.investedAmount))
+                            compactMetric("UNREALIZED", value: unrealizedValue, color: unrealizedColor)
+                        }
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("Opens the Invest tab")
+    }
+
+    private var hasNoInvestmentData: Bool {
+        store.growth.portfolio.positions.isEmpty && store.growth.investmentTrades.isEmpty
+    }
+
+    private var portfolioValue: String {
+        guard let value = store.growth.portfolio.currentValue else { return "Partially priced" }
+        return money(value)
+    }
+
+    private var unrealizedValue: String {
+        guard let value = store.growth.portfolio.unrealizedProfit else { return "Unavailable" }
+        return MoneyFormat.signed(
+            MoneyFormat.decimal(from: value),
+            currency: store.growth.portfolio.currency
+        )
+    }
+
+    private var unrealizedColor: Color {
+        guard let value = store.growth.portfolio.unrealizedProfit else {
+            return AppColor.inverseText.opacity(0.62)
+        }
+        return MoneyFormat.decimal(from: value) >= 0 ? AppColor.income : AppColor.expense
+    }
+
+    private var accessibilityLabel: String {
+        hasNoInvestmentData
+            ? "Investments, no investments yet"
+            : "Investments, portfolio value \(portfolioValue), unrealized \(unrealizedValue)"
+    }
+
+    private func money(_ value: String) -> String {
+        MoneyFormat.amount(
+            MoneyFormat.decimal(from: value),
+            currency: store.growth.portfolio.currency
+        )
+    }
+
+    private func compactMetric(_ label: String, value: String, color: Color = AppColor.inverseText) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(AppColor.inverseText.opacity(0.55))
+            Text(value)
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
