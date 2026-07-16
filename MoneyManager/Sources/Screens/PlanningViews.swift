@@ -129,7 +129,7 @@ private struct ScheduleEditorView: View {
     @Binding var isPresented: Bool
     @State private var type = "expense"
     @State private var name = ""
-    @State private var category = "food"
+    @State private var category = "groceries"
     @State private var description = ""
     @State private var amount = ""
     @State private var frequency = "monthly"

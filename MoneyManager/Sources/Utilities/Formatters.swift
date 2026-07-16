@@ -173,6 +173,40 @@ enum DateFormat {
     }
 }
 
+enum InvestmentPriceTimestampFormat {
+    static func latestUpdate(in positions: [InvestmentPosition]) -> Date? {
+        positions.compactMap { position in
+            position.priceAsOf.flatMap(DateFormat.apiDateTime)
+        }.max()
+    }
+
+    static func relativeElapsed(since date: Date, now: Date = Date()) -> String {
+        let seconds = max(0, Int(now.timeIntervalSince(date)))
+        if seconds < 60 { return "just now" }
+
+        let minutes = seconds / 60
+        if minutes < 60 { return unit(minutes, singular: "minute") }
+
+        let hours = minutes / 60
+        if hours < 24 { return unit(hours, singular: "hour") }
+
+        let days = hours / 24
+        if days < 7 { return unit(days, singular: "day") }
+
+        let weeks = days / 7
+        if weeks < 5 { return unit(weeks, singular: "week") }
+
+        let months = days / 30
+        if months < 12 { return unit(months, singular: "month") }
+
+        return unit(max(1, days / 365), singular: "year")
+    }
+
+    private static func unit(_ count: Int, singular: String) -> String {
+        "\(count) \(singular)\(count == 1 ? "" : "s") ago"
+    }
+}
+
 func abs(_ value: Decimal) -> Decimal {
     value < .zero ? -value : value
 }

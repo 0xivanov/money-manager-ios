@@ -12,6 +12,7 @@ struct AppRootView: View {
             }
         }
         .tint(AppColor.financeGreen)
+        .preferredColorScheme(store.appAppearance.colorScheme)
         .task {
             await store.bootstrap()
             if PushConfiguration.isEnabled, let eventType = PushEventStore.pending {
@@ -43,6 +44,16 @@ struct AppRootView: View {
             guard let eventType = notification.object as? String else { return }
             store.handlePushEvent(eventType)
             PushEventStore.pending = nil
+        }
+    }
+}
+
+private extension AppAppearance {
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
         }
     }
 }

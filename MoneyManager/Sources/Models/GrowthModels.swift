@@ -355,6 +355,79 @@ struct InvestmentPortfolioHistoryPoint: Codable, Identifiable, Equatable {
     }
 }
 
+struct InvestmentPortfolioChartPoint: Identifiable, Equatable {
+    let date: Date
+    let value: Double
+    let investedAmount: Double
+
+    var id: Date { date }
+}
+
+func investmentPortfolioChartPoints(
+    _ points: [InvestmentPortfolioHistoryPoint]
+) -> [InvestmentPortfolioChartPoint] {
+    points.compactMap { point in
+        guard let date = point.date else { return nil }
+        return InvestmentPortfolioChartPoint(
+            date: date,
+            value: Double(truncating: MoneyFormat.decimal(from: point.value) as NSDecimalNumber),
+            investedAmount: Double(truncating: MoneyFormat.decimal(from: point.investedAmount) as NSDecimalNumber)
+        )
+    }
+    .sorted { $0.date < $1.date }
+}
+
+func sampledInvestmentChartPoints(
+    _ points: [InvestmentPortfolioChartPoint],
+    limit: Int
+) -> [InvestmentPortfolioChartPoint] {
+    guard limit >= 2, points.count > limit else { return points }
+
+    let lastIndex = points.count - 1
+    let step = Double(lastIndex) / Double(limit - 1)
+    var result: [InvestmentPortfolioChartPoint] = []
+    result.reserveCapacity(limit)
+    var previousIndex = -1
+
+    for sampleIndex in 0..<limit {
+        let index = sampleIndex == limit - 1
+            ? lastIndex
+            : Int((Double(sampleIndex) * step).rounded())
+        guard index != previousIndex else { continue }
+        result.append(points[index])
+        previousIndex = index
+    }
+    return result
+}
+
+func investmentHistoryAxisDates(
+    _ points: [InvestmentPortfolioChartPoint],
+    maximumCount: Int
+) -> [Date] {
+    guard maximumCount > 1, !points.isEmpty else { return points.first.map { [$0.date] } ?? [] }
+    if points.count <= maximumCount { return points.map(\.date) }
+
+    let lastIndex = points.count - 1
+    let step = Double(lastIndex) / Double(maximumCount - 1)
+    return (0..<maximumCount).map { tick in
+        let index = tick == maximumCount - 1
+            ? lastIndex
+            : Int((Double(tick) * step).rounded())
+        return points[index].date
+    }
+}
+
+func investmentHistoryAxisLabel(_ date: Date, range: String) -> String {
+    switch range.lowercased() {
+    case "1m":
+        date.formatted(.dateTime.day().month(.abbreviated))
+    case "5y", "max":
+        date.formatted(.dateTime.year())
+    default:
+        date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
+    }
+}
+
 struct InvestmentPortfolioHistory: Codable, Equatable {
     let points: [InvestmentPortfolioHistoryPoint]
     let currency: String

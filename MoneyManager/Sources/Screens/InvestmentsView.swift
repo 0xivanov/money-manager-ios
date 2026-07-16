@@ -75,16 +75,38 @@ struct InvestmentView: View {
                 if store.growth.isLoadingInvestments && store.growth.investmentTrades.isEmpty {
                     ProgressView().tint(AppColor.inverseText)
                 } else {
-                    Text(portfolioValue)
+                    PrivacyValueText(
+                        value: portfolioValue,
+                        isHidden: store.hidePortfolioBalances
+                    )
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(AppColor.inverseText)
                         .lineLimit(1).minimumScaleFactor(0.7)
                 }
                 HStack(spacing: 24) {
-                    PortfolioMetric(label: "INVESTED", value: money(store.growth.portfolio.investedAmount), color: AppColor.inverseText)
-                    PortfolioMetric(label: "UNREALIZED", value: signedMoney(store.growth.portfolio.unrealizedProfit), color: profitColor(store.growth.portfolio.unrealizedProfit))
-                    PortfolioMetric(label: "REALIZED", value: signedMoney(store.growth.portfolio.realizedProfit), color: profitColor(store.growth.portfolio.realizedProfit))
+                    PortfolioMetric(
+                        label: "INVESTED",
+                        value: money(store.growth.portfolio.investedAmount),
+                        color: AppColor.inverseText,
+                        isHidden: store.hidePortfolioBalances
+                    )
+                    PortfolioMetric(
+                        label: "UNREALIZED",
+                        value: signedMoney(store.growth.portfolio.unrealizedProfit),
+                        color: profitColor(store.growth.portfolio.unrealizedProfit),
+                        isHidden: store.hidePortfolioBalances
+                    )
+                    PortfolioMetric(
+                        label: "REALIZED",
+                        value: signedMoney(store.growth.portfolio.realizedProfit),
+                        color: profitColor(store.growth.portfolio.realizedProfit),
+                        isHidden: store.hidePortfolioBalances
+                    )
                 }
+                InvestmentPriceStatus(
+                    positions: store.growth.portfolio.positions,
+                    color: AppColor.inverseText.opacity(0.62)
+                )
                 if store.growth.portfolio.missingPrices > 0 {
                     Label("\(store.growth.portfolio.missingPrices) position prices need updating", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption.weight(.semibold)).foregroundStyle(AppColor.crypto)
@@ -115,9 +137,17 @@ struct InvestmentView: View {
             } else {
                 ForEach(store.growth.portfolio.positions) { position in
                     if InvestmentAssetCatalog.hasAutomaticPricing(assetType: position.assetType, symbol: position.symbol) {
-                        InvestmentPositionRow(position: position)
+                        InvestmentPositionRow(
+                            position: position,
+                            hidePortfolioBalances: store.hidePortfolioBalances
+                        )
                     } else {
-                        Button { sheet = .price(position) } label: { InvestmentPositionRow(position: position) }
+                        Button { sheet = .price(position) } label: {
+                            InvestmentPositionRow(
+                                position: position,
+                                hidePortfolioBalances: store.hidePortfolioBalances
+                            )
+                        }
                             .buttonStyle(.plain)
                             .accessibilityHint("Opens manual price editor for this unsupported asset")
                     }
@@ -148,7 +178,17 @@ struct InvestmentView: View {
 
     private var recentTradesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Recent activity").font(.title3.weight(.bold)).foregroundStyle(AppColor.nearBlack)
+            HStack {
+                Text("Recent activity").font(.title3.weight(.bold)).foregroundStyle(AppColor.nearBlack)
+                Spacer()
+                if !store.growth.investmentTrades.isEmpty {
+                    NavigationLink("See all") {
+                        InvestmentTradesView(store: store)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityHint("Shows all investment trades")
+                }
+            }
             if store.growth.investmentTrades.isEmpty {
                 Text("No investment activity yet.").font(.subheadline).foregroundStyle(AppColor.mutedText)
             } else {
@@ -219,11 +259,16 @@ private struct PortfolioMetric: View {
     let label: String
     let value: String
     let color: Color
+    let isHidden: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label).font(.system(size: 9, weight: .bold)).foregroundStyle(AppColor.inverseText.opacity(0.55))
-            Text(value).font(.caption.weight(.bold).monospacedDigit()).foregroundStyle(color).lineLimit(1).minimumScaleFactor(0.65)
+            PrivacyValueText(value: value, isHidden: isHidden)
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -231,6 +276,7 @@ private struct PortfolioMetric: View {
 
 private struct InvestmentPortfolioHistoryCard: View {
     @Bindable var store: MoneyManagerStore
+    @State private var selectedDate: Date?
 
     var body: some View {
         AppCard(padding: 18) {
@@ -245,16 +291,36 @@ private struct InvestmentPortfolioHistoryCard: View {
                             .foregroundStyle(AppColor.mutedText)
                     }
                     Spacer()
+                    if store.growth.isLoadingInvestmentHistory {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Updating portfolio history")
+                    }
                     if let last = points.last {
-                        Text(money(last.value))
+                        PrivacyValueText(
+                            value: money(last.value),
+                            isHidden: store.hidePortfolioBalances
+                        )
                             .font(.subheadline.weight(.bold).monospacedDigit())
                             .foregroundStyle(AppColor.nearBlack)
                     }
+                    NavigationLink {
+                        InvestmentPortfolioHistoryView(store: store)
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 34, height: 34)
+                            .background(AppColor.background)
+                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(AppColor.financeGreen)
+                    .accessibilityLabel("Expand portfolio history")
                 }
 
                 chartContent
 
-                if !points.isEmpty {
+                if !points.isEmpty && !store.hidePortfolioBalances {
                     HStack(spacing: 16) {
                         chartLegend(color: AppColor.financeGreen, title: "Value")
                         chartLegend(color: AppColor.mutedText, title: "Invested", dashed: true)
@@ -275,7 +341,9 @@ private struct InvestmentPortfolioHistoryCard: View {
 
     @ViewBuilder
     private var chartContent: some View {
-        if store.growth.isLoadingInvestmentHistory && points.isEmpty {
+        if store.hidePortfolioBalances && !points.isEmpty {
+            PortfolioPrivacyPlaceholder(height: 180)
+        } else if store.growth.isLoadingInvestmentHistory && points.isEmpty {
             VStack(spacing: 10) {
                 ProgressView()
                 Text("Building your portfolio history")
@@ -315,47 +383,90 @@ private struct InvestmentPortfolioHistoryCard: View {
             .frame(maxWidth: .infinity, minHeight: 180)
             .accessibilityElement(children: .combine)
         } else {
-            Chart(points) { point in
-                AreaMark(
-                    x: .value("Date", point.date ?? .distantPast),
-                    y: .value("Portfolio value", double(point.value))
-                )
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [AppColor.financeGreen.opacity(0.28), AppColor.financeGreen.opacity(0.02)],
-                        startPoint: .top,
-                        endPoint: .bottom
+            let displayPoints = chartPoints
+            let lastPointID = displayPoints.last?.id
+            Chart {
+                ForEach(displayPoints) { point in
+                    AreaMark(
+                        x: .value("Date", point.date),
+                        y: .value("Portfolio value", point.value)
                     )
-                )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [AppColor.financeGreen.opacity(0.28), AppColor.financeGreen.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
 
-                LineMark(
-                    x: .value("Date", point.date ?? .distantPast),
-                    y: .value("Portfolio value", double(point.value)),
-                    series: .value("Series", "Portfolio value")
-                )
-                .foregroundStyle(AppColor.financeGreen)
-                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                    LineMark(
+                        x: .value("Date", point.date),
+                        y: .value("Portfolio value", point.value),
+                        series: .value("Series", "Portfolio value")
+                    )
+                    .foregroundStyle(AppColor.financeGreen)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
 
-                LineMark(
-                    x: .value("Date", point.date ?? .distantPast),
-                    y: .value("Invested amount", double(point.investedAmount)),
-                    series: .value("Series", "Invested amount")
-                )
-                .foregroundStyle(AppColor.mutedText)
-                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    LineMark(
+                        x: .value("Date", point.date),
+                        y: .value("Invested amount", point.investedAmount),
+                        series: .value("Series", "Invested amount")
+                    )
+                    .foregroundStyle(AppColor.mutedText)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
 
-                PointMark(
-                    x: .value("Date", point.date ?? .distantPast),
-                    y: .value("Portfolio value", double(point.value))
-                )
-                .foregroundStyle(AppColor.financeGreen)
-                .symbolSize(14)
+                    if point.id == lastPointID, selectedPoint == nil {
+                        PointMark(
+                            x: .value("Date", point.date),
+                            y: .value("Portfolio value", point.value)
+                        )
+                        .foregroundStyle(AppColor.financeGreen)
+                        .symbolSize(24)
+                    }
+                }
+
+                if let selectedPoint {
+                    RuleMark(x: .value("Selected date", selectedPoint.date))
+                        .foregroundStyle(AppColor.nearBlack.opacity(0.42))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+                    PointMark(
+                        x: .value("Selected date", selectedPoint.date),
+                        y: .value("Selected invested amount", selectedPoint.investedAmount)
+                    )
+                    .foregroundStyle(AppColor.mutedText)
+                    .symbolSize(38)
+
+                    PointMark(
+                        x: .value("Selected date", selectedPoint.date),
+                        y: .value("Selected portfolio value", selectedPoint.value)
+                    )
+                    .foregroundStyle(AppColor.financeGreen)
+                    .symbolSize(52)
+                    .annotation(
+                        position: .top,
+                        spacing: 8,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))
+                    ) {
+                        InvestmentChartSelectionTooltip(
+                            date: selectedPoint.date,
+                            value: money(selectedPoint.value),
+                            investedAmount: money(selectedPoint.investedAmount)
+                        )
+                    }
+                }
             }
             .chartLegend(.hidden)
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) {
+                AxisMarks(values: axisDates) { value in
                     AxisGridLine().foregroundStyle(AppColor.divider)
-                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    AxisValueLabel(collisionResolution: .disabled) {
+                        if let date = value.as(Date.self) {
+                            Text(investmentHistoryAxisLabel(date, range: store.growth.portfolioHistory.range))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(AppColor.mutedText)
+                        }
+                    }
                 }
             }
             .chartYAxis {
@@ -364,18 +475,30 @@ private struct InvestmentPortfolioHistoryCard: View {
                     AxisValueLabel()
                 }
             }
-            .chartXScale(range: .plotDimension(startPadding: 10, endPadding: 10))
+            .chartXScale(range: .plotDimension(startPadding: 0, endPadding: 0))
+            .chartXSelection(value: $selectedDate)
             .frame(height: 190)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Portfolio value for the last year")
             .accessibilityValue(chartAccessibilityValue)
+            .accessibilityHint("Tap or drag across the chart to inspect a date")
         }
     }
 
-    private var points: [InvestmentPortfolioHistoryPoint] {
-        store.growth.portfolioHistory.points
-            .filter { $0.date != nil }
-            .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
+    private var points: [InvestmentPortfolioChartPoint] {
+        store.growth.portfolioHistoryChartPoints
+    }
+
+    private var chartPoints: [InvestmentPortfolioChartPoint] {
+        sampledInvestmentChartPoints(points, limit: 96)
+    }
+
+    private var axisDates: [Date] {
+        investmentHistoryAxisDates(chartPoints, maximumCount: 4)
+    }
+
+    private var selectedPoint: InvestmentPortfolioChartPoint? {
+        nearestInvestmentChartPoint(to: selectedDate, in: chartPoints)
     }
 
     private var rangeTitle: String {
@@ -383,12 +506,18 @@ private struct InvestmentPortfolioHistoryCard: View {
         case "1m": "Last month"
         case "3m": "Last 3 months"
         case "1y": "Last year"
-        case "all": "All time"
+        case "2y": "Last 2 years"
+        case "5y": "Last 5 years"
+        case "max": "All time"
         default: store.growth.portfolioHistory.range.uppercased()
         }
     }
 
     private var chartAccessibilityValue: String {
+        if store.hidePortfolioBalances { return "Portfolio balances hidden" }
+        if let selectedPoint {
+            return "\(selectedPoint.date.formatted(date: .abbreviated, time: .omitted)), value \(money(selectedPoint.value)), invested \(money(selectedPoint.investedAmount))."
+        }
         guard let first = points.first, let last = points.last else { return "No history available" }
         return "From \(money(first.value)) to \(money(last.value)). Invested amount \(money(last.investedAmount))."
     }
@@ -407,8 +536,11 @@ private struct InvestmentPortfolioHistoryCard: View {
         )
     }
 
-    private func double(_ value: String) -> Double {
-        NSDecimalNumber(decimal: MoneyFormat.decimal(from: value)).doubleValue
+    private func money(_ value: Double) -> String {
+        MoneyFormat.amount(
+            Decimal(value),
+            currency: store.growth.portfolioHistory.currency
+        )
     }
 
     private func chartLegend(color: Color, title: String, dashed: Bool = false) -> some View {
@@ -423,26 +555,694 @@ private struct InvestmentPortfolioHistoryCard: View {
     }
 }
 
+private func nearestInvestmentChartPoint(
+    to selectedDate: Date?,
+    in points: [InvestmentPortfolioChartPoint]
+) -> InvestmentPortfolioChartPoint? {
+    guard let selectedDate else { return nil }
+    return points.min {
+        abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate))
+    }
+}
+
+private struct InvestmentChartSelectionTooltip: View {
+    let date: Date
+    let value: String
+    let investedAmount: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(date.formatted(.dateTime.day().month(.abbreviated).year()))
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppColor.nearBlack)
+
+            valueRow(color: AppColor.financeGreen, label: "Value", value: value)
+            valueRow(color: AppColor.mutedText, label: "Invested", value: investedAmount)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(AppColor.divider, lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.12), radius: 8, y: 3)
+        .allowsHitTesting(false)
+    }
+
+    private func valueRow(color: Color, label: String, value: String) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 6, height: 6)
+            Text(label)
+                .foregroundStyle(AppColor.mutedText)
+            Spacer(minLength: 8)
+            Text(value)
+                .fontWeight(.semibold)
+                .foregroundStyle(AppColor.nearBlack)
+        }
+        .font(.caption2.monospacedDigit())
+        .frame(minWidth: 145)
+    }
+}
+
+private enum InvestmentHistoryRange: String, CaseIterable, Identifiable {
+    case month = "1m"
+    case quarter = "3m"
+    case year = "1y"
+    case twoYears = "2y"
+    case fiveYears = "5y"
+    case maximum = "max"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .month: "1M"
+        case .quarter: "3M"
+        case .year: "1Y"
+        case .twoYears: "2Y"
+        case .fiveYears: "5Y"
+        case .maximum: "MAX"
+        }
+    }
+
+    var accessibilityTitle: String {
+        switch self {
+        case .month: "One month"
+        case .quarter: "Three months"
+        case .year: "One year"
+        case .twoYears: "Two years"
+        case .fiveYears: "Five years"
+        case .maximum: "All available history"
+        }
+    }
+}
+
+private struct InvestmentPortfolioHistoryView: View {
+    @Bindable var store: MoneyManagerStore
+    @State private var selectedRange: InvestmentHistoryRange
+    @State private var selectedDate: Date?
+
+    init(store: MoneyManagerStore) {
+        self.store = store
+        _selectedRange = State(
+            initialValue: InvestmentHistoryRange(rawValue: store.growth.portfolioHistory.range) ?? .year
+        )
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                rangePicker
+
+                InvestmentPriceStatus(positions: store.growth.portfolio.positions)
+
+                historySummary
+
+                AppCard(padding: 18) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Text("Portfolio value")
+                                .font(.headline)
+                                .foregroundStyle(AppColor.nearBlack)
+                            Spacer()
+                            if store.growth.isLoadingInvestmentHistory {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .accessibilityLabel("Updating portfolio history")
+                            }
+                            if let last = points.last {
+                                PrivacyValueText(
+                                    value: money(last.value),
+                                    isHidden: store.hidePortfolioBalances
+                                )
+                                    .font(.headline.monospacedDigit())
+                                    .foregroundStyle(AppColor.nearBlack)
+                            }
+                        }
+
+                        chartContent
+
+                        if !points.isEmpty && !store.hidePortfolioBalances {
+                            HStack(spacing: 18) {
+                                chartLegend(color: AppColor.financeGreen, title: "Value")
+                                chartLegend(color: AppColor.mutedText, title: "Invested", dashed: true)
+                            }
+                        }
+                    }
+                }
+
+                if store.growth.portfolioHistory.unsupportedPositions > 0 {
+                    Label(unsupportedPositionsMessage, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(AppColor.mutedText)
+                        .padding(.horizontal, 4)
+                }
+            }
+            .padding(20)
+        }
+        .scrollIndicators(.hidden)
+        .appBackground()
+        .navigationTitle("Portfolio history")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: selectedRange) {
+            guard
+                store.growth.portfolioHistory.range != selectedRange.rawValue,
+                let token = store.token
+            else { return }
+            await store.growth.loadInvestmentHistory(token: token, range: selectedRange.rawValue)
+        }
+        .refreshable {
+            guard let token = store.token else { return }
+            await store.growth.loadInvestmentHistory(token: token, range: selectedRange.rawValue, force: true)
+        }
+    }
+
+    private var rangePicker: some View {
+        HStack(spacing: 4) {
+            ForEach(InvestmentHistoryRange.allCases) { range in
+                Button {
+                    selectedDate = nil
+                    selectedRange = range
+                } label: {
+                    Text(range.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(selectedRange == range ? AppColor.primaryText : AppColor.mutedText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(selectedRange == range ? AppColor.filledButton : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(range.accessibilityTitle)
+                .accessibilityAddTraits(selectedRange == range ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .background(AppColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppColor.divider, lineWidth: 1)
+        }
+    }
+
+    private var historySummary: some View {
+        HStack(spacing: 10) {
+            historyMetric(
+                title: "VALUE",
+                value: points.last.map { money($0.value) } ?? "—",
+                isHidden: store.hidePortfolioBalances
+            )
+            historyMetric(
+                title: "INVESTED",
+                value: points.last.map { money($0.investedAmount) } ?? "—",
+                isHidden: store.hidePortfolioBalances
+            )
+            historyMetric(
+                title: "RETURN",
+                value: returnValue,
+                color: returnColor,
+                isHidden: store.hidePortfolioBalances
+            )
+        }
+    }
+
+    private func historyMetric(
+        title: String,
+        value: String,
+        color: Color = AppColor.nearBlack,
+        isHidden: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppColor.mutedText)
+            PrivacyValueText(value: value, isHidden: isHidden)
+                .font(.subheadline.weight(.bold).monospacedDigit())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(AppColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(AppColor.divider, lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private var chartContent: some View {
+        if store.hidePortfolioBalances && !points.isEmpty {
+            PortfolioPrivacyPlaceholder(height: 320)
+        } else if store.growth.isLoadingInvestmentHistory && points.isEmpty {
+            VStack(spacing: 10) {
+                ProgressView()
+                Text("Loading history")
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+            }
+            .frame(maxWidth: .infinity, minHeight: 320)
+        } else if let error = store.growth.investmentHistoryError, points.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "chart.line.downtrend.xyaxis")
+                    .font(.title2)
+                    .foregroundStyle(AppColor.mutedText)
+                Text("Portfolio history is unavailable")
+                    .font(.subheadline.weight(.semibold))
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, minHeight: 320)
+        } else if points.isEmpty {
+            VStack(spacing: 10) {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.title2)
+                    .foregroundStyle(AppColor.financeGreen)
+                Text("No portfolio history yet")
+                    .font(.subheadline.weight(.semibold))
+                Text("Your chart will appear after the first BTC or ETH trade.")
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, minHeight: 320)
+        } else {
+            let displayPoints = chartPoints
+            Chart {
+                ForEach(displayPoints) { point in
+                    AreaMark(
+                        x: .value("Date", point.date),
+                        y: .value("Portfolio value", point.value)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [AppColor.financeGreen.opacity(0.28), AppColor.financeGreen.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                    LineMark(
+                        x: .value("Date", point.date),
+                        y: .value("Portfolio value", point.value),
+                        series: .value("Series", "Portfolio value")
+                    )
+                    .foregroundStyle(AppColor.financeGreen)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+                    LineMark(
+                        x: .value("Date", point.date),
+                        y: .value("Invested amount", point.investedAmount),
+                        series: .value("Series", "Invested amount")
+                    )
+                    .foregroundStyle(AppColor.mutedText)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                }
+
+                if let selectedPoint {
+                    RuleMark(x: .value("Selected date", selectedPoint.date))
+                        .foregroundStyle(AppColor.nearBlack.opacity(0.42))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+                    PointMark(
+                        x: .value("Selected date", selectedPoint.date),
+                        y: .value("Selected invested amount", selectedPoint.investedAmount)
+                    )
+                    .foregroundStyle(AppColor.mutedText)
+                    .symbolSize(38)
+
+                    PointMark(
+                        x: .value("Selected date", selectedPoint.date),
+                        y: .value("Selected portfolio value", selectedPoint.value)
+                    )
+                    .foregroundStyle(AppColor.financeGreen)
+                    .symbolSize(52)
+                    .annotation(
+                        position: .top,
+                        spacing: 8,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))
+                    ) {
+                        InvestmentChartSelectionTooltip(
+                            date: selectedPoint.date,
+                            value: money(selectedPoint.value),
+                            investedAmount: money(selectedPoint.investedAmount)
+                        )
+                    }
+                }
+            }
+            .chartLegend(.hidden)
+            .chartXAxis {
+                AxisMarks(values: axisDates) { value in
+                    AxisGridLine().foregroundStyle(AppColor.divider)
+                    AxisValueLabel(collisionResolution: .disabled) {
+                        if let date = value.as(Date.self) {
+                            Text(investmentHistoryAxisLabel(date, range: displayedRange.rawValue))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(AppColor.nearBlack.opacity(0.72))
+                        }
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) {
+                    AxisGridLine().foregroundStyle(AppColor.divider)
+                    AxisValueLabel()
+                }
+            }
+            .chartXScale(range: .plotDimension(startPadding: 0, endPadding: 0))
+            .chartXSelection(value: $selectedDate)
+            .frame(height: 340)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Portfolio value for \(displayedRange.accessibilityTitle.lowercased())")
+            .accessibilityValue(chartAccessibilityValue)
+            .accessibilityHint("Tap or drag across the chart to inspect a date")
+        }
+    }
+
+    private var points: [InvestmentPortfolioChartPoint] {
+        store.growth.portfolioHistoryChartPoints
+    }
+
+    private var chartPoints: [InvestmentPortfolioChartPoint] {
+        sampledInvestmentChartPoints(points, limit: 160)
+    }
+
+    private var axisDates: [Date] {
+        investmentHistoryAxisDates(chartPoints, maximumCount: 5)
+    }
+
+    private var selectedPoint: InvestmentPortfolioChartPoint? {
+        nearestInvestmentChartPoint(to: selectedDate, in: chartPoints)
+    }
+
+    private var displayedRange: InvestmentHistoryRange {
+        InvestmentHistoryRange(rawValue: store.growth.portfolioHistory.range) ?? selectedRange
+    }
+
+    private var returnAmount: Decimal? {
+        guard let last = points.last else { return nil }
+        return Decimal(last.value) - Decimal(last.investedAmount)
+    }
+
+    private var returnValue: String {
+        guard let returnAmount else { return "—" }
+        return MoneyFormat.signed(returnAmount, currency: store.growth.portfolioHistory.currency)
+    }
+
+    private var returnColor: Color {
+        guard let returnAmount else { return AppColor.mutedText }
+        return amountColor(returnAmount)
+    }
+
+    private var chartAccessibilityValue: String {
+        if store.hidePortfolioBalances { return "Portfolio balances hidden" }
+        if let selectedPoint {
+            return "\(selectedPoint.date.formatted(date: .abbreviated, time: .omitted)), value \(money(selectedPoint.value)), invested \(money(selectedPoint.investedAmount))."
+        }
+        guard let first = points.first, let last = points.last else { return "No history available" }
+        return "From \(money(first.value)) to \(money(last.value)). Invested amount \(money(last.investedAmount))."
+    }
+
+    private var unsupportedPositionsMessage: String {
+        let count = store.growth.portfolioHistory.unsupportedPositions
+        return count == 1 ? "1 stock position is excluded" : "\(count) stock positions are excluded"
+    }
+
+    private func money(_ value: String) -> String {
+        MoneyFormat.amount(
+            MoneyFormat.decimal(from: value),
+            currency: store.growth.portfolioHistory.currency
+        )
+    }
+
+    private func money(_ value: Double) -> String {
+        MoneyFormat.amount(
+            Decimal(value),
+            currency: store.growth.portfolioHistory.currency
+        )
+    }
+
+    private func chartLegend(color: Color, title: String, dashed: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Capsule()
+                .stroke(color, style: StrokeStyle(lineWidth: 2, dash: dashed ? [4, 3] : []))
+                .frame(width: 20, height: 2)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(AppColor.mutedText)
+        }
+    }
+}
+
+struct InvestmentTradeDayBucket: Identifiable, Equatable {
+    let date: Date
+    let trades: [InvestmentTrade]
+
+    var id: Date { date }
+}
+
+func investmentTradeDayBuckets(
+    _ trades: [InvestmentTrade],
+    calendar: Calendar = .current
+) -> [InvestmentTradeDayBucket] {
+    let datedTrades = trades.compactMap { trade -> (Date, InvestmentTrade)? in
+        guard let date = DateFormat.apiDateTime(trade.occurredAt) else { return nil }
+        return (calendar.startOfDay(for: date), trade)
+    }
+    return Dictionary(grouping: datedTrades, by: \.0)
+        .map { day, entries in
+            InvestmentTradeDayBucket(
+                date: day,
+                trades: entries.map(\.1).sorted {
+                    (DateFormat.apiDateTime($0.occurredAt) ?? .distantPast)
+                        > (DateFormat.apiDateTime($1.occurredAt) ?? .distantPast)
+                }
+            )
+        }
+        .sorted { $0.date > $1.date }
+}
+
+private struct InvestmentTradesView: View {
+    @Bindable var store: MoneyManagerStore
+    @State private var searchQuery = ""
+    @State private var side: String?
+
+    var body: some View {
+        List {
+            Section {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        tradeFilter(title: "All", value: nil)
+                        tradeFilter(title: "Buys", value: "buy")
+                        tradeFilter(title: "Sells", value: "sell")
+                    }
+                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 8, trailing: 20))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+
+            if filteredTrades.isEmpty {
+                Section {
+                    VStack(spacing: 10) {
+                        Image(systemName: searchQuery.isEmpty ? "chart.line.uptrend.xyaxis" : "magnifyingglass")
+                            .font(.title2)
+                            .foregroundStyle(AppColor.financeGreen)
+                        Text(searchQuery.isEmpty && side == nil ? "No investment activity yet" : "No matching trades")
+                            .font(.headline)
+                            .foregroundStyle(AppColor.nearBlack)
+                        Text(searchQuery.isEmpty && side == nil
+                            ? "Your recorded trades will appear here."
+                            : "Try changing your search or trade filter.")
+                            .font(.subheadline)
+                            .foregroundStyle(AppColor.mutedText)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 36)
+                    .listRowBackground(Color.clear)
+                }
+            } else {
+                ForEach(dayBuckets) { bucket in
+                    Section {
+                        ForEach(bucket.trades) { trade in
+                            InvestmentTradeRow(store: store, trade: trade)
+                                .listRowBackground(AppColor.surface)
+                        }
+                    } header: {
+                        HStack {
+                            Text(DateFormat.dayHeader.string(from: bucket.date))
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(AppColor.nearBlack)
+                            Spacer()
+                            Text("\(bucket.trades.count) \(bucket.trades.count == 1 ? "trade" : "trades")")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppColor.mutedText)
+                        }
+                        .textCase(nil)
+                        .padding(.top, 4)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .appBackground()
+        .navigationTitle("Investment activity")
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(
+            text: $searchQuery,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Asset, broker, amount, or notes"
+        )
+        .refreshable {
+            guard let token = store.token else { return }
+            await store.growth.loadInvestments(token: token, force: true)
+        }
+    }
+
+    private var filteredTrades: [InvestmentTrade] {
+        store.growth.investmentTrades.filter { trade in
+            let matchesSide = side == nil || trade.side == side
+            let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !query.isEmpty else { return matchesSide }
+            let searchableText = [
+                trade.symbol,
+                trade.assetName,
+                brokerName(trade.broker),
+                trade.side,
+                trade.amount,
+                trade.quantity,
+                trade.notes,
+                DateFormat.dateTimeDisplay(trade.occurredAt),
+            ].joined(separator: " ").lowercased()
+            return matchesSide && searchableText.contains(query)
+        }
+    }
+
+    private var dayBuckets: [InvestmentTradeDayBucket] {
+        investmentTradeDayBuckets(filteredTrades)
+    }
+
+    private func tradeFilter(title: String, value: String?) -> some View {
+        Button {
+            side = value
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(side == value ? AppColor.primaryText : AppColor.nearBlack)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .background(side == value ? AppColor.filledButton : AppColor.surface)
+                .clipShape(Capsule())
+                .overlay {
+                    if side != value {
+                        Capsule().stroke(AppColor.divider, lineWidth: 1)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct InvestmentAssetIcon: View {
+    let symbol: String
+    let assetType: String
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .fill(backgroundColor)
+
+            switch symbol.uppercased() {
+            case "BTC":
+                Image(systemName: "bitcoinsign")
+                    .font(.system(size: 25, weight: .bold))
+                    .rotationEffect(.degrees(8))
+                    .foregroundStyle(.white)
+            case "ETH":
+                EthereumMark()
+                    .fill(.white)
+                    .frame(width: 23, height: 29)
+            default:
+                Text(String(symbol.prefix(1)))
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 46, height: 46)
+        .accessibilityHidden(true)
+    }
+
+    private var backgroundColor: Color {
+        switch symbol.uppercased() {
+        case "BTC": Color(red: 247 / 255, green: 147 / 255, blue: 26 / 255)
+        case "ETH": Color(red: 98 / 255, green: 126 / 255, blue: 234 / 255)
+        default: assetType == "crypto" ? AppColor.crypto : AppColor.stocks
+        }
+    }
+}
+
+private struct EthereumMark: Shape {
+    func path(in rect: CGRect) -> Path {
+        let centerX = rect.midX
+        var path = Path()
+
+        path.move(to: CGPoint(x: centerX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.43))
+        path.addLine(to: CGPoint(x: centerX, y: rect.minY + rect.height * 0.59))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.43))
+        path.closeSubpath()
+
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.53))
+        path.addLine(to: CGPoint(x: centerX, y: rect.minY + rect.height * 0.69))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.53))
+        path.addLine(to: CGPoint(x: centerX, y: rect.maxY))
+        path.closeSubpath()
+
+        return path
+    }
+}
+
 private struct InvestmentPositionRow: View {
     let position: InvestmentPosition
+    let hidePortfolioBalances: Bool
 
     var body: some View {
         HStack(spacing: 13) {
-            Text(String(position.symbol.prefix(1)))
-                .font(.headline.weight(.bold)).foregroundStyle(.white)
-                .frame(width: 46, height: 46)
-                .background(position.assetType == "crypto" ? AppColor.crypto : AppColor.stocks)
-                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            InvestmentAssetIcon(symbol: position.symbol, assetType: position.assetType)
             VStack(alignment: .leading, spacing: 3) {
                 Text(position.assetName).font(.headline).foregroundStyle(AppColor.nearBlack)
-                Text("\(position.symbol) · \(brokerName(position.broker)) · \(position.quantity)")
+                PrivacyValueText(
+                    value: "\(position.symbol) · \(brokerName(position.broker)) · \(position.quantity)",
+                    isHidden: hidePortfolioBalances,
+                    hiddenAccessibilityLabel: "\(position.symbol), \(brokerName(position.broker)), quantity hidden"
+                )
                     .font(.caption).foregroundStyle(AppColor.mutedText)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {
-                Text(position.currentValue.map { MoneyFormat.amount(MoneyFormat.decimal(from: $0), currency: position.currency) } ?? "Set price")
+                PrivacyValueText(
+                    value: position.currentValue.map {
+                        MoneyFormat.amount(MoneyFormat.decimal(from: $0), currency: position.currency)
+                    } ?? "Set price",
+                    isHidden: hidePortfolioBalances
+                )
                     .font(.subheadline.weight(.bold)).foregroundStyle(position.currentValue == nil ? AppColor.crypto : AppColor.nearBlack)
-                Text("Avg \(MoneyFormat.amount(MoneyFormat.decimal(from: position.averageCost), currency: position.currency))")
+                PrivacyValueText(
+                    value: "Avg \(MoneyFormat.amount(MoneyFormat.decimal(from: position.averageCost), currency: position.currency))",
+                    isHidden: hidePortfolioBalances,
+                    hiddenAccessibilityLabel: "Average cost hidden"
+                )
                     .font(.caption2).foregroundStyle(AppColor.mutedText)
             }
         }
@@ -786,6 +1586,13 @@ struct GrowthPreviewHost: View {
                     quantity: "0.084", averageCost: "54000.00", investedAmount: "4536.00",
                     currentPrice: "64525.00", currentValue: "5420.10", unrealizedProfit: "884.10",
                     unrealizedPercent: "19.49", realizedProfit: "0.00", currency: "EUR",
+                    priceAsOf: "2026-07-13T20:00:00Z", priceStatus: "available"
+                ),
+                InvestmentPosition(
+                    assetType: "crypto", symbol: "ETH", assetName: "Ethereum", broker: "revolut_x",
+                    quantity: "1.25", averageCost: "2100.00", investedAmount: "2625.00",
+                    currentPrice: "2400.00", currentValue: "3000.00", unrealizedProfit: "375.00",
+                    unrealizedPercent: "14.29", realizedProfit: "0.00", currency: "EUR",
                     priceAsOf: "2026-07-13T20:00:00Z", priceStatus: "available"
                 ),
                 InvestmentPosition(

@@ -21,10 +21,16 @@ extension MoneyManagerAPI {
         let _: EmptyResponse = try await request(path: "/schedules/\(id)", method: "DELETE", token: token)
     }
 
-    func getTransactionScheduleOccurrences(token: String, from: String, through: String) async throws -> [TransactionScheduleOccurrence] {
+    func getTransactionScheduleOccurrences(
+        token: String,
+        from: String,
+        through: String,
+        status: String = "planned"
+    ) async throws -> [TransactionScheduleOccurrence] {
         try await request(path: "/schedule-occurrences", token: token, queryItems: [
             URLQueryItem(name: "from", value: from),
             URLQueryItem(name: "through", value: through),
+            URLQueryItem(name: "status", value: status),
         ])
     }
 

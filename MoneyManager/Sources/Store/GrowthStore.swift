@@ -4,14 +4,30 @@ import Observation
 @MainActor
 @Observable
 final class GrowthStore {
+    private struct InvestmentHistoryCacheEntry {
+        let history: InvestmentPortfolioHistory
+        let cachedAt: Date
+    }
+
+    private static let investmentHistoryCacheTTL: TimeInterval = 5 * 60
+
     private let api: MoneyManagerAPI
+    @ObservationIgnored private var investmentLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var investmentLoadID: UUID?
+    @ObservationIgnored private var investmentHistoryLoadID: UUID?
+    @ObservationIgnored private var investmentHistoryCache: [String: InvestmentHistoryCacheEntry] = [:]
 
     var transactionSchedules: [TransactionSchedule] = []
     var scheduleOccurrences: [TransactionScheduleOccurrence] = []
     var budgets: [Budget] = []
     var notificationPreferences = NotificationPreferences.defaults
     var portfolio = InvestmentPortfolio.empty
-    var portfolioHistory = InvestmentPortfolioHistory.empty
+    var portfolioHistory = InvestmentPortfolioHistory.empty {
+        didSet {
+            portfolioHistoryChartPoints = investmentPortfolioChartPoints(portfolioHistory.points)
+        }
+    }
+    private(set) var portfolioHistoryChartPoints: [InvestmentPortfolioChartPoint] = []
     var investmentTrades: [InvestmentTrade] = []
     var investmentSchedules: [InvestmentSchedule] = []
     var isLoadingPlanning = false
@@ -27,6 +43,11 @@ final class GrowthStore {
     }
 
     func reset() {
+        investmentLoadTask?.cancel()
+        investmentLoadTask = nil
+        investmentLoadID = nil
+        investmentHistoryLoadID = nil
+        investmentHistoryCache = [:]
         transactionSchedules = []
         scheduleOccurrences = []
         budgets = []
@@ -150,9 +171,32 @@ final class GrowthStore {
     }
 
     func loadInvestments(token: String, force: Bool = false) async {
-        if isLoadingInvestments || (!force && (
+        if let investmentLoadTask {
+            await investmentLoadTask.value
+            return
+        }
+        if !force && (
             !portfolio.positions.isEmpty || !investmentTrades.isEmpty || !portfolioHistory.points.isEmpty
-        )) { return }
+        ) { return }
+        if force {
+            investmentHistoryCache = [:]
+        }
+
+        let loadID = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performInvestmentLoad(token: token)
+        }
+        investmentLoadID = loadID
+        investmentLoadTask = task
+        await task.value
+        if investmentLoadID == loadID {
+            investmentLoadTask = nil
+            investmentLoadID = nil
+        }
+    }
+
+    private func performInvestmentLoad(token: String) async {
         isLoadingInvestments = true
         isLoadingInvestmentHistory = true
         error = nil
@@ -169,25 +213,33 @@ final class GrowthStore {
 
         var loadErrors: [String] = []
         do {
-            portfolio = try await portfolioResult
+            let loadedPortfolio = try await portfolioResult
+            try Task.checkCancellation()
+            portfolio = loadedPortfolio
         } catch {
-            loadErrors.append(error.localizedDescription)
+            if !isCancellation(error) { loadErrors.append(error.localizedDescription) }
         }
         do {
-            investmentTrades = try await tradesResult
+            let loadedTrades = try await tradesResult
+            try Task.checkCancellation()
+            investmentTrades = loadedTrades
         } catch {
-            loadErrors.append(error.localizedDescription)
+            if !isCancellation(error) { loadErrors.append(error.localizedDescription) }
         }
         do {
-            investmentSchedules = try await schedulesResult
+            let loadedSchedules = try await schedulesResult
+            try Task.checkCancellation()
+            investmentSchedules = loadedSchedules
         } catch {
-            loadErrors.append(error.localizedDescription)
+            if !isCancellation(error) { loadErrors.append(error.localizedDescription) }
         }
 
         do {
-            portfolioHistory = try await historyResult
+            let loadedHistory = try await historyResult
+            try Task.checkCancellation()
+            storeInvestmentHistory(loadedHistory)
         } catch {
-            investmentHistoryError = error.localizedDescription
+            if !isCancellation(error) { investmentHistoryError = error.localizedDescription }
         }
         self.error = loadErrors.first
     }
@@ -195,13 +247,59 @@ final class GrowthStore {
     func createInvestmentTrade(token: String, request: InvestmentTradeRequest) async -> Bool {
         await performSave {
             _ = try await api.createInvestmentTrade(token: token, request: request)
+            investmentHistoryCache = [:]
             await loadInvestments(token: token, force: true)
         }
+    }
+
+    func loadInvestmentHistory(token: String, range: String, force: Bool = false) async {
+        if !force,
+           let cached = investmentHistoryCache[range],
+           Date().timeIntervalSince(cached.cachedAt) < Self.investmentHistoryCacheTTL {
+            portfolioHistory = cached.history
+            investmentHistoryError = nil
+            return
+        }
+
+        let loadID = UUID()
+        investmentHistoryLoadID = loadID
+        isLoadingInvestmentHistory = true
+        investmentHistoryError = nil
+        defer {
+            if investmentHistoryLoadID == loadID {
+                investmentHistoryLoadID = nil
+                isLoadingInvestmentHistory = false
+            }
+        }
+        do {
+            let loadedHistory = try await api.getInvestmentPortfolioHistory(token: token, range: range)
+            try Task.checkCancellation()
+            guard investmentHistoryLoadID == loadID else { return }
+            storeInvestmentHistory(loadedHistory)
+        } catch {
+            if investmentHistoryLoadID == loadID && !isCancellation(error) {
+                investmentHistoryError = error.localizedDescription
+            }
+        }
+    }
+
+    private func storeInvestmentHistory(_ history: InvestmentPortfolioHistory) {
+        portfolioHistory = history
+        investmentHistoryCache[history.range] = InvestmentHistoryCacheEntry(
+            history: history,
+            cachedAt: Date()
+        )
+    }
+
+    private func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        return (error as? URLError)?.code == .cancelled
     }
 
     func deleteInvestmentTrade(token: String, id: Int) async {
         _ = await performSave {
             try await api.deleteInvestmentTrade(token: token, id: id)
+            investmentHistoryCache = [:]
             await loadInvestments(token: token, force: true)
         }
     }
@@ -214,6 +312,7 @@ final class GrowthStore {
                 currency: position.currency,
                 price: price
             ))
+            investmentHistoryCache = [:]
             await loadInvestments(token: token, force: true)
         }
     }

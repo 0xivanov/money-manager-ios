@@ -28,3 +28,13 @@ xcodebuild -project MoneyManager.xcodeproj -target MoneyManagerTests -sdk iphone
 ```
 
 Running tests requires an installed and available iOS Simulator runtime/device in Xcode.
+
+## On-device transaction classification
+
+The bundled Core ML text classifier categorizes Revolut CSV rows on the phone before import. Only predictions at or above the app's confidence threshold are applied; uncertain rows stay `Other`. Manual category corrections are stored locally and take precedence for matching merchant descriptions.
+
+Regenerate the checked-in model after changing its training seeds:
+
+```sh
+xcrun swift Tools/train_transaction_classifier.swift MoneyManager/Resources/TransactionCategoryClassifier.mlmodel
+```

@@ -18,16 +18,30 @@ extension MoneyManagerStore {
             .sorted { $0.amount > $1.amount }
     }
 
-    func investmentSpending(currency: String) -> Decimal {
-        guard growth.portfolio.currency.caseInsensitiveCompare(currency) == .orderedSame else {
-            return .zero
-        }
-        return MoneyFormat.decimal(from: growth.portfolio.investedAmount)
+    func monthlyInvestmentCashFlow(month: String, currency: String) -> Decimal {
+        growth.investmentTrades
+            .filter {
+                $0.currency.caseInsensitiveCompare(currency) == .orderedSame
+                    && String($0.occurredAt.prefix(7)) == month
+            }
+            .reduce(.zero) { total, trade in
+                let amount = MoneyFormat.decimal(from: trade.amount)
+                let fees = MoneyFormat.decimal(from: trade.fees)
+
+                switch trade.side.lowercased() {
+                case "buy":
+                    return total + amount + fees
+                case "sell":
+                    return total - amount + fees
+                default:
+                    return total
+                }
+            }
     }
 
-    func balanceIncludingInvestments(_ summary: TransactionSummary) -> Decimal {
+    func balanceAfterInvestments(_ summary: TransactionSummary) -> Decimal {
         MoneyFormat.decimal(from: summary.balance)
-            - investmentSpending(currency: summary.currency)
+            - monthlyInvestmentCashFlow(month: summary.month, currency: summary.currency)
     }
 
     var transactionDayBuckets: [DayBucket] {
@@ -172,7 +186,7 @@ extension MoneyManagerStore {
         expenseCategories = newExpenseCategories
         incomeCategories = newIncomeCategories
         if formCategory.isEmpty {
-            formCategory = expenseCategories.first?.name ?? "food"
+            formCategory = expenseCategories.first?.name ?? "groceries"
         }
     }
 
@@ -191,6 +205,12 @@ extension MoneyManagerStore {
             transactions = newTransactions
             dashboardLoadState = .loaded
             error = nil
+            scheduleOnDeviceClassification(
+                for: newTransactions,
+                token: requestedToken,
+                generation: sessionGeneration,
+                month: requestedMonth
+            )
         } catch is CancellationError {
             return
         } catch let urlError as URLError where urlError.code == .cancelled {

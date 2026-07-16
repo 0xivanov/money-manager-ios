@@ -30,13 +30,14 @@ struct MetricTile: View {
     let label: String
     let value: String
     let tint: Color
+    var hidesValue = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(label)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(AppColor.mutedText)
-            Text(value)
+            PrivacyValueText(value: value, isHidden: hidesValue)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(tint)
                 .lineLimit(1)
@@ -49,6 +50,60 @@ struct MetricTile: View {
         .overlay {
             RoundedRectangle(cornerRadius: AppMetric.cardRadius, style: .continuous)
                 .stroke(AppColor.divider, lineWidth: 1)
+        }
+    }
+}
+
+struct PrivacyValueText: View {
+    let value: String
+    let isHidden: Bool
+    var hiddenAccessibilityLabel = "Portfolio balance hidden"
+
+    var body: some View {
+        if isHidden {
+            Text("••••••")
+                .accessibilityLabel(hiddenAccessibilityLabel)
+        } else {
+            Text(value)
+        }
+    }
+}
+
+struct PortfolioPrivacyPlaceholder: View {
+    var height: CGFloat
+    var tint = AppColor.financeGreen
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "eye.slash.fill")
+                .font(.title2)
+                .foregroundStyle(tint)
+            Text("Portfolio balances hidden")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppColor.mutedText)
+        }
+        .frame(maxWidth: .infinity, minHeight: height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Portfolio balances hidden")
+    }
+}
+
+struct InvestmentPriceStatus: View {
+    let positions: [InvestmentPosition]
+    var color = AppColor.mutedText
+
+    var body: some View {
+        if let updatedAt = InvestmentPriceTimestampFormat.latestUpdate(in: positions) {
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                let relative = InvestmentPriceTimestampFormat.relativeElapsed(
+                    since: updatedAt,
+                    now: context.date
+                )
+                Text("Prices · updated \(relative)")
+                    .font(.caption)
+                    .foregroundStyle(color)
+                    .accessibilityLabel("Prices updated \(relative)")
+            }
         }
     }
 }

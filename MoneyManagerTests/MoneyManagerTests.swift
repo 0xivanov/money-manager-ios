@@ -60,6 +60,55 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertNil(MoneyFormat.inputDecimal(from: "1.2.3", locale: locale))
     }
 
+    func testInvestmentPriceTimestampFormattingUsesLatestPosition() throws {
+        let earlier = "2026-07-15T10:00:00Z"
+        let later = "2026-07-15T12:00:00Z"
+        let positions = [
+            investmentPosition(priceAsOf: earlier),
+            investmentPosition(priceAsOf: later),
+            investmentPosition(priceAsOf: nil),
+        ]
+
+        XCTAssertEqual(
+            InvestmentPriceTimestampFormat.latestUpdate(in: positions),
+            DateFormat.apiDateTime(later)
+        )
+
+        let now = try XCTUnwrap(DateFormat.apiDateTime("2026-07-15T12:10:00Z"))
+        XCTAssertEqual(
+            InvestmentPriceTimestampFormat.relativeElapsed(
+                since: try XCTUnwrap(DateFormat.apiDateTime("2026-07-15T12:09:40Z")),
+                now: now
+            ),
+            "just now"
+        )
+        XCTAssertEqual(
+            InvestmentPriceTimestampFormat.relativeElapsed(
+                since: try XCTUnwrap(DateFormat.apiDateTime("2026-07-15T12:08:00Z")),
+                now: now
+            ),
+            "2 minutes ago"
+        )
+    }
+
+    @MainActor
+    func testAppPreferencesDefaultAndPersist() throws {
+        let suiteName = "MoneyManagerTests.\(UUID().uuidString)"
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { preferences.removePersistentDomain(forName: suiteName) }
+
+        let initialStore = MoneyManagerStore(preferences: preferences)
+        XCTAssertTrue(initialStore.hidePortfolioBalances)
+        XCTAssertEqual(initialStore.appAppearance, .system)
+
+        initialStore.hidePortfolioBalances = false
+        initialStore.appAppearance = .dark
+
+        let restoredStore = MoneyManagerStore(preferences: preferences)
+        XCTAssertFalse(restoredStore.hidePortfolioBalances)
+        XCTAssertEqual(restoredStore.appAppearance, .dark)
+    }
+
     func testTransactionRequestEncodesDescription() throws {
         let request = TransactionRequest(
             type: "expense",
@@ -75,6 +124,141 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertEqual(object["excluded_from_budget"] as? Bool, false)
     }
 
+    func testOnDeviceClassifierUsesRulesAndLearnsCorrections() throws {
+        let suiteName = "MoneyManagerClassifierTests.\(UUID().uuidString)"
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { preferences.removePersistentDomain(forName: suiteName) }
+        let classifier = OnDeviceTransactionClassifier(
+            preferences: preferences,
+            loadBundledModel: false
+        )
+
+        XCTAssertEqual(
+            classifier.predict(description: "CARD PAYMENT TO LIDL SOFIA", transactionType: "expense"),
+            TransactionCategoryPrediction(category: "groceries", confidence: 0.99, source: .rule)
+        )
+        XCTAssertEqual(
+            classifier.predict(description: "DINNER AT LOCAL RESTAURANT", transactionType: "expense"),
+            TransactionCategoryPrediction(category: "dining_out", confidence: 0.99, source: .rule)
+        )
+        XCTAssertEqual(
+            classifier.predict(description: "DOWNTOWN SHISHA LOUNGE", transactionType: "expense"),
+            TransactionCategoryPrediction(category: "going_out", confidence: 0.99, source: .rule)
+        )
+        XCTAssertEqual(
+            classifier.predict(description: "DOWNTOWN BARBER SHOP", transactionType: "expense"),
+            TransactionCategoryPrediction(category: "beauty", confidence: 0.99, source: .rule)
+        )
+        XCTAssertEqual(categorySymbol("beauty"), "scissors")
+        XCTAssertEqual(categorySymbol("groceries"), "cart.fill")
+        XCTAssertEqual(categoryTitle("dining_out"), "Dining Out")
+        XCTAssertNil(classifier.predict(description: "MY LOCAL PLACE 1234", transactionType: "expense"))
+
+        classifier.rememberCorrection(
+            description: "CARD PAYMENT TO MY LOCAL PLACE 1234",
+            transactionType: "expense",
+            category: "shopping"
+        )
+        XCTAssertEqual(
+            classifier.predict(description: "MY LOCAL PLACE 5678", transactionType: "expense"),
+            TransactionCategoryPrediction(category: "shopping", confidence: 1, source: .correction)
+        )
+    }
+
+    func testRevolutCSVIsAnnotatedOnDeviceAndPreservesQuotedFields() throws {
+        let classifier = OnDeviceTransactionClassifier(loadBundledModel: false)
+        let csv = "Type,Completed Date,Description,Amount,Currency,State\r\n"
+            + "CARD_PAYMENT,2026-07-11 10:01:00,\"LIDL, Sofia\",-12.34,EUR,COMPLETED\r\n"
+            + "CARD_PAYMENT,2026-07-12 10:01:00,Mystery Place,-9.00,EUR,COMPLETED\r\n"
+
+        let result = try RevolutCSVCategoryAnnotator.annotate(Data(csv.utf8), classifier: classifier)
+        let annotated = try XCTUnwrap(String(data: result.data, encoding: .utf8))
+
+        XCTAssertEqual(result.classified, 1)
+        XCTAssertEqual(result.uncertain, 1)
+        XCTAssertTrue(annotated.contains("State,Money Manager Category"))
+        XCTAssertTrue(annotated.contains("\"LIDL, Sofia\",-12.34,EUR,COMPLETED,groceries"))
+        XCTAssertTrue(annotated.contains("Mystery Place,-9.00,EUR,COMPLETED,"))
+    }
+
+    func testBundledTransactionClassifierIsAvailable() {
+        let classifier = OnDeviceTransactionClassifier()
+        XCTAssertTrue(classifier.isModelAvailable)
+        let prediction = classifier.predict(
+            description: "CARD PAYMENT TO ELECTRONICS STORE",
+            transactionType: "expense"
+        )
+        XCTAssertEqual(prediction?.category, "shopping")
+        XCTAssertEqual(prediction?.source, .model)
+        XCTAssertGreaterThanOrEqual(prediction?.confidence ?? 0, 0.80)
+    }
+
+    func testGemmaCategoryResponseRequiresAllowedHighConfidenceCategory() {
+        let allowed = Set(["groceries", "dining_out", "going_out", "other"])
+        let prediction = GemmaOnDeviceService.parseCategoryResponse(
+            #"""
+            ```json
+            {"category":"going out","confidence":0.92}
+            ```
+            """#,
+            allowedCategories: allowed
+        )
+
+        XCTAssertEqual(prediction?.category, "going_out")
+        XCTAssertEqual(prediction?.source, .gemma)
+        XCTAssertNil(GemmaOnDeviceService.parseCategoryResponse(
+            #"{"category":"groceries","confidence":0.52}"#,
+            allowedCategories: allowed
+        ))
+        XCTAssertNil(GemmaOnDeviceService.parseCategoryResponse(
+            #"{"category":"salary","confidence":0.99}"#,
+            allowedCategories: allowed
+        ))
+    }
+
+    @MainActor
+    func testLoadedRevolutOtherTransactionIsReclassifiedOnDevice() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        var api = MoneyManagerAPI(baseURL: URL(string: "https://example.test")!)
+        api.session = URLSession(configuration: configuration)
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.httpMethod, "PUT")
+            XCTAssertEqual(request.url?.path, "/transactions/41")
+            return try MockURLProtocol.response(
+                request: request,
+                json: #"{"id":41,"type":"expense","category":"groceries","description":"CARD PAYMENT TO LIDL","amount":"14.20","currency":"EUR","occurred_at":"2026-07-15","source":"import","status":"booked"}"#
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let store = MoneyManagerStore(api: api)
+        store.token = "token"
+        store.month = "2026-07"
+        let transaction = Transaction(
+            id: 41,
+            type: "expense",
+            category: "other",
+            description: "CARD PAYMENT TO LIDL",
+            amount: "14.20",
+            currency: "EUR",
+            occurredAt: "2026-07-15",
+            source: "import",
+            status: "booked"
+        )
+        store.transactions = [transaction]
+
+        store.scheduleOnDeviceClassification(
+            for: [transaction],
+            token: "token",
+            generation: store.sessionGeneration,
+            month: "2026-07"
+        )
+        await store.categoryClassificationTask?.value
+
+        XCTAssertEqual(store.transactions.first?.category, "groceries")
+    }
+
     func testDecodesPlanningAndInvestmentContracts() throws {
         let schedule = try JSONDecoder().decode(TransactionSchedule.self, from: Data(#"{"id":1,"type":"expense","name":"Rent","category":"housing","description":"","amount":"1200.00","currency":"EUR","frequency":"monthly","frequency_interval":1,"start_date":"2026-08-01","day_of_month":1,"timezone":"Europe/Sofia","auto_post":true,"status":"active","next_occurrence_date":"2026-08-01"}"#.utf8))
         XCTAssertEqual(schedule.nextOccurrenceDate, "2026-08-01")
@@ -86,6 +270,31 @@ final class MoneyManagerTests: XCTestCase {
 
         let portfolio = try JSONDecoder().decode(InvestmentPortfolio.self, from: Data(#"{"positions":[],"invested_amount":"0.00","current_value":"0.00","unrealized_profit":"0.00","realized_profit":"0.00","currency":"EUR","missing_prices":0}"#.utf8))
         XCTAssertEqual(portfolio, .empty)
+    }
+
+    func testScheduleForecastRequestsOnlyPlannedOccurrences() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        var api = MoneyManagerAPI(baseURL: URL(string: "https://example.test")!)
+        api.session = URLSession(configuration: configuration)
+        MockURLProtocol.requestHandler = { request in
+            let components = try XCTUnwrap(
+                URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            )
+            XCTAssertEqual(request.url?.path, "/schedule-occurrences")
+            XCTAssertEqual(components.queryItems?.first(where: { $0.name == "from" })?.value, "2026-07-15")
+            XCTAssertEqual(components.queryItems?.first(where: { $0.name == "through" })?.value, "2026-10-13")
+            XCTAssertEqual(components.queryItems?.first(where: { $0.name == "status" })?.value, "planned")
+            return try MockURLProtocol.response(request: request, json: "[]")
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let occurrences = try await api.getTransactionScheduleOccurrences(
+            token: "token",
+            from: "2026-07-15",
+            through: "2026-10-13"
+        )
+        XCTAssertTrue(occurrences.isEmpty)
     }
 
     func testInvestmentAmountContractAndPortfolioHistory() async throws {
@@ -151,6 +360,105 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertTrue(InvestmentAssetCatalog.all.filter { $0.type == .stock }.allSatisfy { !$0.isTradeEnabled })
         XCTAssertTrue(InvestmentAssetCatalog.hasAutomaticPricing(assetType: "crypto", symbol: "btc"))
         XCTAssertFalse(InvestmentAssetCatalog.hasAutomaticPricing(assetType: "stock", symbol: "AAPL"))
+    }
+
+    func testInvestmentTradesAreGroupedAndSortedByDay() throws {
+        let trades = [
+            investmentTrade(id: 1, occurredAt: "2026-07-14T08:00:00Z"),
+            investmentTrade(id: 2, occurredAt: "2026-07-15T09:00:00Z"),
+            investmentTrade(id: 3, occurredAt: "2026-07-15T18:00:00Z"),
+        ]
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+
+        let buckets = investmentTradeDayBuckets(trades, calendar: calendar)
+
+        XCTAssertEqual(buckets.count, 2)
+        XCTAssertEqual(DateFormat.isoDate.string(from: buckets[0].date), "2026-07-15")
+        XCTAssertEqual(buckets[0].trades.map(\.id), [3, 2])
+        XCTAssertEqual(buckets[1].trades.map(\.id), [1])
+    }
+
+    @MainActor
+    func testInvestmentHistoryCanLoadAnExpandedRange() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        var api = MoneyManagerAPI(baseURL: URL(string: "https://example.test")!)
+        api.session = URLSession(configuration: configuration)
+
+        MockURLProtocol.requestHandler = { request in
+            let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false))
+            XCTAssertEqual(components.path, "/investments/portfolio/history")
+            XCTAssertEqual(components.queryItems?.first(where: { $0.name == "range" })?.value, "3m")
+            return try MockURLProtocol.response(
+                request: request,
+                json: #"{"points":[{"as_of":"2026-07-15T00:00:00Z","value":"130.00","invested_amount":"100.00"}],"currency":"EUR","range":"3m","unsupported_positions":0}"#
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let store = GrowthStore(api: api)
+        await store.loadInvestmentHistory(token: "token", range: "3m")
+
+        XCTAssertEqual(store.portfolioHistory.range, "3m")
+        XCTAssertEqual(store.portfolioHistory.points.map(\.value), ["130.00"])
+        XCTAssertNil(store.investmentHistoryError)
+    }
+
+    @MainActor
+    func testInvestmentHistoryUsesFiveMinuteClientCache() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        var api = MoneyManagerAPI(baseURL: URL(string: "https://example.test")!)
+        api.session = URLSession(configuration: configuration)
+        var requestCount = 0
+
+        MockURLProtocol.requestHandler = { request in
+            requestCount += 1
+            return try MockURLProtocol.response(
+                request: request,
+                json: #"{"points":[{"as_of":"2026-07-15T00:00:00Z","value":"130.00","invested_amount":"100.00"}],"currency":"EUR","range":"3m","unsupported_positions":0}"#
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let store = GrowthStore(api: api)
+        await store.loadInvestmentHistory(token: "token", range: "3m")
+        await store.loadInvestmentHistory(token: "token", range: "3m")
+
+        XCTAssertEqual(requestCount, 1)
+        XCTAssertEqual(store.portfolioHistory.range, "3m")
+    }
+
+    func testPortfolioChartPreprocessingAndSampling() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let start = try XCTUnwrap(DateFormat.apiDateTime("2025-07-16T00:00:00Z"))
+        let source = (0..<365).reversed().map { day in
+            InvestmentPortfolioHistoryPoint(
+                asOf: DateFormat.apiTimestamp(
+                    calendar.date(byAdding: .day, value: day, to: start) ?? start
+                ),
+                value: String(day),
+                investedAmount: String(day / 2)
+            )
+        }
+
+        let parsed = investmentPortfolioChartPoints(source)
+        let cardPoints = sampledInvestmentChartPoints(parsed, limit: 96)
+        let expandedPoints = sampledInvestmentChartPoints(parsed, limit: 160)
+
+        XCTAssertEqual(parsed.count, 365)
+        XCTAssertEqual(cardPoints.count, 96)
+        XCTAssertEqual(expandedPoints.count, 160)
+        XCTAssertEqual(cardPoints.first, parsed.first)
+        XCTAssertEqual(cardPoints.last, parsed.last)
+        XCTAssertEqual(expandedPoints.first, parsed.first)
+        XCTAssertEqual(expandedPoints.last, parsed.last)
+        let axisDates = investmentHistoryAxisDates(expandedPoints, maximumCount: 5)
+        XCTAssertEqual(axisDates.count, 5)
+        XCTAssertEqual(axisDates.first, parsed.first?.date)
+        XCTAssertEqual(axisDates.last, parsed.last?.date)
+        XCTAssertFalse(investmentHistoryAxisLabel(try XCTUnwrap(axisDates.first), range: "5y").isEmpty)
     }
 
     @MainActor
@@ -276,17 +584,14 @@ final class MoneyManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testPortfolioInvestmentSpendingAdjustsDashboardBalance() {
+    func testMonthlyInvestmentCashFlowIsSecondaryToDashboardBalance() {
         let store = MoneyManagerStore()
-        store.growth.portfolio = InvestmentPortfolio(
-            positions: [],
-            investedAmount: "250.00",
-            currentValue: "271.89",
-            unrealizedProfit: "21.89",
-            realizedProfit: "0.00",
-            currency: "EUR",
-            missingPrices: 0
-        )
+        store.growth.investmentTrades = [
+            investmentTrade(id: 1, occurredAt: "2026-07-04T10:00:00Z", amount: "100.00", fees: "1.00"),
+            investmentTrade(id: 2, occurredAt: "2026-07-11T10:00:00Z", side: "sell", amount: "25.00", fees: "0.50"),
+            investmentTrade(id: 3, occurredAt: "2026-06-20T10:00:00Z", amount: "250.00", fees: "2.00"),
+            investmentTrade(id: 4, occurredAt: "2026-07-12T10:00:00Z", amount: "90.00", fees: "1.00", currency: "USD")
+        ]
         let summary = TransactionSummary(
             month: "2026-07",
             income: "2000.00",
@@ -296,9 +601,10 @@ final class MoneyManagerTests: XCTestCase {
             transactionCount: 4
         )
 
-        XCTAssertEqual(store.investmentSpending(currency: "EUR"), Decimal(string: "250.00"))
-        XCTAssertEqual(store.balanceIncludingInvestments(summary), Decimal(string: "1250.00"))
-        XCTAssertEqual(store.investmentSpending(currency: "USD"), .zero)
+        XCTAssertEqual(store.monthlyInvestmentCashFlow(month: "2026-07", currency: "EUR"), Decimal(string: "76.50"))
+        XCTAssertEqual(MoneyFormat.decimal(from: summary.balance), Decimal(string: "1500.00"))
+        XCTAssertEqual(store.balanceAfterInvestments(summary), Decimal(string: "1423.50"))
+        XCTAssertEqual(store.monthlyInvestmentCashFlow(month: "2026-05", currency: "EUR"), .zero)
     }
 
     @MainActor
@@ -331,6 +637,53 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertEqual(DateFormat.isoDate.string(from: store.exportFrom), "2026-05-01")
         XCTAssertEqual(DateFormat.isoDate.string(from: store.exportTo), "2026-05-31")
     }
+}
+
+private func investmentTrade(
+    id: Int,
+    occurredAt: String,
+    side: String = "buy",
+    amount: String = "100.00",
+    fees: String = "0.00",
+    currency: String = "EUR"
+) -> InvestmentTrade {
+    InvestmentTrade(
+        id: id,
+        assetType: "crypto",
+        symbol: "BTC",
+        assetName: "Bitcoin",
+        broker: "revolut_x",
+        side: side,
+        amount: amount,
+        quantity: "0.001",
+        pricePerUnit: "100000.00",
+        fees: fees,
+        currency: currency,
+        occurredAt: occurredAt,
+        notes: "",
+        priceProvider: "kraken",
+        priceAsOf: occurredAt
+    )
+}
+
+private func investmentPosition(priceAsOf: String?) -> InvestmentPosition {
+    InvestmentPosition(
+        assetType: "crypto",
+        symbol: "BTC",
+        assetName: "Bitcoin",
+        broker: "revolut_x",
+        quantity: "0.001",
+        averageCost: "100000.00",
+        investedAmount: "100.00",
+        currentPrice: "110000.00",
+        currentValue: "110.00",
+        unrealizedProfit: "10.00",
+        unrealizedPercent: "10.00",
+        realizedProfit: "0.00",
+        currency: "EUR",
+        priceAsOf: priceAsOf,
+        priceStatus: priceAsOf == nil ? "missing" : "available"
+    )
 }
 
 private final class MockURLProtocol: URLProtocol {

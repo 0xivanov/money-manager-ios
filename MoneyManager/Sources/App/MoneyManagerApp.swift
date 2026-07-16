@@ -17,6 +17,8 @@ struct MoneyManagerApp: App {
                 OpenBankingPreviewHost(
                     isEmpty: ProcessInfo.processInfo.arguments.contains("-open-banking-preview-empty")
                 )
+            } else if ProcessInfo.processInfo.arguments.contains("-ai-insights-preview") {
+                AIInsightsPreviewHost()
             } else {
                 AppRootView(store: store)
             }

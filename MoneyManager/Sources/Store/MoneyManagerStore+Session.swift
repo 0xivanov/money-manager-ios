@@ -102,6 +102,8 @@ extension MoneyManagerStore {
     private func resetSession(clearEmail: Bool) {
         refreshTask?.cancel()
         refreshTask = nil
+        categoryClassificationTask?.cancel()
+        categoryClassificationTask = nil
         refreshGeneration += 1
         sessionGeneration += 1
         openBankingReloadRequested = false

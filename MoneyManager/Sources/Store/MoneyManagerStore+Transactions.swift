@@ -60,7 +60,7 @@ extension MoneyManagerStore {
     func updateFormType(_ type: String) {
         formType = type
         let categories = type == TransactionType.income.rawValue ? incomeCategories : expenseCategories
-        formCategory = categories.first?.name ?? (type == TransactionType.income.rawValue ? "salary" : "food")
+        formCategory = categories.first?.name ?? (type == TransactionType.income.rawValue ? "salary" : "groceries")
     }
 
     func chooseFormCategory(_ category: String) {
@@ -91,7 +91,18 @@ extension MoneyManagerStore {
                     occurredAt: DateFormat.isoDate.string(from: self.formOccurredAt)
                 )
                 if let editingID = self.editingID {
+                    let original = self.transactions.first { $0.id == editingID }
                     _ = try await self.api.updateTransaction(token: token, id: editingID, transaction: request)
+                    if let original,
+                        original.category.caseInsensitiveCompare(request.category) != .orderedSame,
+                        original.source == "import" || original.source == "open_banking"
+                    {
+                        OnDeviceTransactionClassifier.shared.rememberCorrection(
+                            description: request.description ?? original.description ?? "",
+                            transactionType: request.type,
+                            category: request.category
+                        )
+                    }
                 } else {
                     _ = try await self.api.createTransaction(token: token, transaction: request)
                 }
@@ -149,7 +160,7 @@ extension MoneyManagerStore {
                 try self.requireCurrentSession(token: token, generation: generation)
                 try await self.loadCategories(token: token, generation: generation)
                 if self.formCategory == category.name {
-                    self.formCategory = self.formCategoryOptions.first?.name ?? (self.formType == TransactionType.income.rawValue ? "salary" : "food")
+                    self.formCategory = self.formCategoryOptions.first?.name ?? (self.formType == TransactionType.income.rawValue ? "salary" : "groceries")
                 }
             }
         }
@@ -193,10 +204,101 @@ extension MoneyManagerStore {
             defer { self.isImporting = false }
             await self.runRequest(generation: generation) {
                 guard let token = self.token else { return }
-                let result = try await self.api.importRevolutCSV(token: token, data: data)
+                let annotation = try RevolutCSVCategoryAnnotator.annotate(data)
+                let result = try await self.api.importRevolutCSV(token: token, data: annotation.data)
                 try self.requireCurrentSession(token: token, generation: generation)
-                self.importResultMessage = "Imported \(result.imported). Skipped \(result.skipped) duplicates and \(result.ignored) unsupported rows."
+                let classificationMessage = annotation.classified > 0
+                    ? " Categorized \(annotation.classified) on this device."
+                    : ""
+                self.importResultMessage = "Imported \(result.imported). Skipped \(result.skipped) duplicates and \(result.ignored) unsupported rows.\(classificationMessage)"
                 await self.refresh()
+            }
+        }
+    }
+
+    func scheduleOnDeviceClassification(
+        for sourceTransactions: [Transaction],
+        token requestedToken: String,
+        generation: Int,
+        month requestedMonth: String
+    ) {
+        categoryClassificationTask?.cancel()
+        let classifier = OnDeviceTransactionClassifier.shared
+        let candidates = sourceTransactions.compactMap { transaction -> Transaction? in
+            guard transaction.category.caseInsensitiveCompare("other") == .orderedSame,
+                transaction.source == "import" || transaction.source == "open_banking",
+                transaction.description?.isEmpty == false
+            else { return nil }
+            return transaction
+        }
+        guard !candidates.isEmpty else {
+            categoryClassificationTask = nil
+            return
+        }
+
+        categoryClassificationTask = Task { [weak self] in
+            guard let self else { return }
+            for transaction in candidates {
+                do {
+                    try Task.checkCancellation()
+                    try self.requireCurrentSession(token: requestedToken, generation: generation)
+                    guard let description = transaction.description else { continue }
+                    let prediction: TransactionCategoryPrediction?
+                    if let localPrediction = classifier.predict(
+                        description: description,
+                        transactionType: transaction.type
+                    ) {
+                        prediction = localPrediction
+                    } else if GemmaModelManager.shared.isModelInstalled,
+                        GemmaModelManager.shared.isClassificationEnabled
+                    {
+                        let categories = transaction.type == TransactionType.income.rawValue
+                            ? self.incomeCategories.map(\.name)
+                            : self.expenseCategories.map(\.name)
+                        prediction = try await GemmaOnDeviceService.shared.classify(
+                            description: description,
+                            transactionType: transaction.type,
+                            allowedCategories: categories
+                        )
+                    } else {
+                        prediction = nil
+                    }
+                    guard let prediction, prediction.category != "other" else { continue }
+                    let request = TransactionRequest(
+                        type: transaction.type,
+                        category: prediction.category,
+                        description: transaction.description,
+                        amount: transaction.amount,
+                        currency: transaction.currency,
+                        occurredAt: DateFormat.dateOnly(transaction.occurredAt),
+                        excludedFromBudget: transaction.excludedFromBudget ?? false
+                    )
+                    let updated = try await self.api.updateTransaction(
+                        token: requestedToken,
+                        id: transaction.id,
+                        transaction: request
+                    )
+                    try self.requireCurrentSession(token: requestedToken, generation: generation)
+                    guard self.month == requestedMonth,
+                        let index = self.transactions.firstIndex(where: { $0.id == updated.id }),
+                        self.transactions[index].category.caseInsensitiveCompare("other") == .orderedSame
+                    else { continue }
+                    self.transactions[index] = updated
+                } catch APIError.unauthorized {
+                    guard self.isCurrentSession(token: requestedToken, generation: generation) else { return }
+                    self.expireSession(message: APIError.unauthorized.localizedDescription)
+                    return
+                } catch is CancellationError {
+                    return
+                } catch let urlError as URLError where urlError.code == .cancelled {
+                    return
+                } catch {
+                    // Classification is best effort. Uncertain or rejected rows remain Other.
+                    continue
+                }
+            }
+            if self.isCurrentSession(token: requestedToken, generation: generation) {
+                self.categoryClassificationTask = nil
             }
         }
     }
@@ -204,7 +306,7 @@ extension MoneyManagerStore {
     func clearForm() {
         editingID = nil
         formType = TransactionType.expense.rawValue
-        formCategory = "food"
+        formCategory = "groceries"
         formDescription = ""
         formAmount = ""
         formOccurredAt = Date()

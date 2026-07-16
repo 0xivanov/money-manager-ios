@@ -43,6 +43,11 @@
 		001001000000000000000035 /* OpenBankingConnectFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000035 /* OpenBankingConnectFlowView.swift */; };
 		001001000000000000000036 /* OpenBankingAccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000036 /* OpenBankingAccountDetailView.swift */; };
 		001001000000000000000037 /* OpenBankingComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000037 /* OpenBankingComponents.swift */; };
+		001001000000000000000038 /* OnDeviceTransactionClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000038 /* OnDeviceTransactionClassifier.swift */; };
+		001001000000000000000039 /* TransactionCategoryClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000039 /* TransactionCategoryClassifier.mlmodel */; };
+		001001000000000000000040 /* GemmaOnDeviceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000040 /* GemmaOnDeviceService.swift */; };
+		001001000000000000000041 /* AIInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000041 /* AIInsightsView.swift */; };
+		001001000000000000000042 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 015000000000000000000002 /* LiteRTLM */; };
 		001002000000000000000001 /* MoneyManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002002000000000000000001 /* MoneyManagerTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -93,6 +98,10 @@
 		002001000000000000000035 /* OpenBankingConnectFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBankingConnectFlowView.swift; sourceTree = "<group>"; };
 		002001000000000000000036 /* OpenBankingAccountDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBankingAccountDetailView.swift; sourceTree = "<group>"; };
 		002001000000000000000037 /* OpenBankingComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBankingComponents.swift; sourceTree = "<group>"; };
+		002001000000000000000038 /* OnDeviceTransactionClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceTransactionClassifier.swift; sourceTree = "<group>"; };
+		002001000000000000000039 /* TransactionCategoryClassifier.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = TransactionCategoryClassifier.mlmodel; sourceTree = "<group>"; };
+		002001000000000000000040 /* GemmaOnDeviceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaOnDeviceService.swift; sourceTree = "<group>"; };
+		002001000000000000000041 /* AIInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIInsightsView.swift; sourceTree = "<group>"; };
 		002002000000000000000001 /* MoneyManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyManagerTests.swift; sourceTree = "<group>"; };
 		006000000000000000000001 /* MoneyManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MoneyManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		006000000000000000000002 /* MoneyManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MoneyManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -103,6 +112,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				001001000000000000000042 /* LiteRTLM in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -176,6 +186,8 @@
 				002001000000000000000005 /* MoneyManagerAPI.swift */,
 				002001000000000000000021 /* GrowthAPI.swift */,
 				002001000000000000000006 /* TokenStore.swift */,
+				002001000000000000000038 /* OnDeviceTransactionClassifier.swift */,
+				002001000000000000000040 /* GemmaOnDeviceService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -211,6 +223,7 @@
 				002001000000000000000037 /* OpenBankingComponents.swift */,
 				002001000000000000000023 /* PlanningViews.swift */,
 				002001000000000000000024 /* InvestmentsView.swift */,
+				002001000000000000000041 /* AIInsightsView.swift */,
 			);
 			path = Screens;
 			sourceTree = "<group>";
@@ -244,6 +257,7 @@
 			isa = PBXGroup;
 			children = (
 				002001000000000000000017 /* Assets.xcassets */,
+				002001000000000000000039 /* TransactionCategoryClassifier.mlmodel */,
 			);
 			path = MoneyManager/Resources;
 			sourceTree = "<group>";
@@ -273,6 +287,9 @@
 			dependencies = (
 			);
 			name = MoneyManager;
+			packageProductDependencies = (
+				015000000000000000000002 /* LiteRTLM */,
+			);
 			productName = MoneyManager;
 			productReference = 006000000000000000000001 /* MoneyManager.app */;
 			productType = "com.apple.product-type.application";
@@ -323,6 +340,9 @@
 				Base,
 			);
 			mainGroup = 008000000000000000000001;
+			packageReferences = (
+				015000000000000000000001 /* XCLocalSwiftPackageReference "LiteRTLM" */,
+			);
 			productRefGroup = 008000000000000000000020 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -378,6 +398,10 @@
 				001001000000000000000014 /* Formatters.swift in Sources */,
 				001001000000000000000015 /* ShareSheet.swift in Sources */,
 				001001000000000000000016 /* AppConfiguration.swift in Sources */,
+				001001000000000000000038 /* OnDeviceTransactionClassifier.swift in Sources */,
+				001001000000000000000040 /* GemmaOnDeviceService.swift in Sources */,
+				001001000000000000000041 /* AIInsightsView.swift in Sources */,
+				001001000000000000000039 /* TransactionCategoryClassifier.mlmodel in Sources */,
 				001001000000000000000018 /* OpenBankingView.swift in Sources */,
 				001001000000000000000033 /* OpenBankingPreview.swift in Sources */,
 				001001000000000000000034 /* OpenBankingConnectionViews.swift in Sources */,
@@ -411,6 +435,21 @@
 			targetProxy = 003000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		015000000000000000000001 /* XCLocalSwiftPackageReference "LiteRTLM" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/LiteRTLM;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		015000000000000000000002 /* LiteRTLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 015000000000000000000001 /* XCLocalSwiftPackageReference "LiteRTLM" */;
+			productName = LiteRTLM;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		013000000000000000000001 /* Debug */ = {

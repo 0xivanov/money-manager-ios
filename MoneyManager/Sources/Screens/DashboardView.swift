@@ -233,7 +233,12 @@ struct DashboardView: View {
                     if let summary = store.summary {
                         BalanceCard(
                             summary: summary,
-                            balance: store.balanceIncludingInvestments(summary)
+                            afterInvestmentsBalance: store.balanceAfterInvestments(summary),
+                            investmentCashFlow: store.monthlyInvestmentCashFlow(
+                                month: summary.month,
+                                currency: summary.currency
+                            ),
+                            hidePortfolioBalances: store.hidePortfolioBalances
                         )
                             .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                             .listRowBackground(Color.clear)
@@ -297,7 +302,11 @@ private struct DashboardContent: View {
         Section {
             SummaryMetrics(
                 summary: summary,
-                investmentSpending: store.investmentSpending(currency: summary.currency)
+                investmentCashFlow: store.monthlyInvestmentCashFlow(
+                    month: summary.month,
+                    currency: summary.currency
+                ),
+                hidePortfolioBalances: store.hidePortfolioBalances
             )
                 .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
                 .listRowBackground(Color.clear)
@@ -313,6 +322,20 @@ private struct DashboardContent: View {
             SpendingCard(store: store, currency: summary.currency)
                 .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
                 .listRowBackground(Color.clear)
+        }
+
+        Section("AI") {
+            NavigationLink {
+                AIInsightsView(store: store)
+            } label: {
+                PlanningLinkRow(
+                    icon: "sparkles",
+                    title: "AI Insights",
+                    detail: GemmaModelManager.shared.isModelInstalled
+                        ? "Private analysis on this device"
+                        : "Set up optional on-device Gemma"
+                )
+            }
         }
 
         Section("Plan") {
@@ -413,7 +436,9 @@ private struct DashboardFailureState: View {
 
 private struct BalanceCard: View {
     let summary: TransactionSummary
-    let balance: Decimal
+    let afterInvestmentsBalance: Decimal
+    let investmentCashFlow: Decimal
+    let hidePortfolioBalances: Bool
 
     var body: some View {
         AppCard(color: AppColor.softGreenSurface, padding: 24) {
@@ -421,23 +446,59 @@ private struct BalanceCard: View {
                 Label("Monthly balance", systemImage: "wallet.bifold.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppColor.financeGreen)
-                Text(MoneyFormat.amount(balance, currency: summary.currency))
+                Text(MoneyFormat.amount(MoneyFormat.decimal(from: summary.balance), currency: summary.currency))
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .foregroundStyle(AppColor.nearBlack)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
-                Text("Income minus expenses and investments for this month")
+                Text("Income minus expenses")
                     .font(.footnote)
                     .foregroundStyle(AppColor.mutedText)
+
+                Divider()
+                    .padding(.vertical, 2)
+
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("After investments")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppColor.nearBlack)
+                        PrivacyValueText(
+                            value: investmentDetail,
+                            isHidden: hidePortfolioBalances,
+                            hiddenAccessibilityLabel: "Investment amount hidden"
+                        )
+                            .font(.caption)
+                            .foregroundStyle(AppColor.mutedText)
+                    }
+                    Spacer(minLength: 8)
+                    PrivacyValueText(
+                        value: MoneyFormat.amount(afterInvestmentsBalance, currency: summary.currency),
+                        isHidden: hidePortfolioBalances
+                    )
+                        .font(.system(.headline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(AppColor.mutedText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
             }
             .accessibilityElement(children: .combine)
         }
+    }
+
+    private var investmentDetail: String {
+        let amount = investmentCashFlow < .zero ? -investmentCashFlow : investmentCashFlow
+        let formatted = MoneyFormat.amount(amount, currency: summary.currency)
+        return investmentCashFlow < .zero
+            ? "\(formatted) returned this month"
+            : "\(formatted) invested this month"
     }
 }
 
 private struct SummaryMetrics: View {
     let summary: TransactionSummary
-    let investmentSpending: Decimal
+    let investmentCashFlow: Decimal
+    let hidePortfolioBalances: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -453,9 +514,10 @@ private struct SummaryMetrics: View {
                 tint: AppColor.expense
             )
             MetricTile(
-                label: "Investments",
-                value: MoneyFormat.amount(investmentSpending, currency: summary.currency),
-                tint: AppColor.crypto
+                label: "Invested",
+                value: MoneyFormat.amount(investmentCashFlow, currency: summary.currency),
+                tint: AppColor.crypto,
+                hidesValue: hidePortfolioBalances
             )
         }
     }
@@ -511,7 +573,10 @@ private struct DashboardInvestmentCard: View {
                                 Text("PORTFOLIO VALUE")
                                     .font(.caption.weight(.bold))
                                     .foregroundStyle(AppColor.inverseText.opacity(0.62))
-                                Text(portfolioValue)
+                                PrivacyValueText(
+                                    value: portfolioValue,
+                                    isHidden: store.hidePortfolioBalances
+                                )
                                     .font(.system(size: 26, weight: .bold, design: .rounded))
                                     .foregroundStyle(AppColor.inverseText)
                                     .lineLimit(1)
@@ -522,9 +587,22 @@ private struct DashboardInvestmentCard: View {
                                 .foregroundStyle(AppColor.inverseText.opacity(0.55))
                         }
                         HStack(spacing: 18) {
-                            compactMetric("INVESTED", value: money(store.growth.portfolio.investedAmount))
-                            compactMetric("UNREALIZED", value: unrealizedValue, color: unrealizedColor)
+                            compactMetric(
+                                "INVESTED",
+                                value: money(store.growth.portfolio.investedAmount),
+                                isHidden: store.hidePortfolioBalances
+                            )
+                            compactMetric(
+                                "UNREALIZED",
+                                value: unrealizedValue,
+                                color: unrealizedColor,
+                                isHidden: store.hidePortfolioBalances
+                            )
                         }
+                        InvestmentPriceStatus(
+                            positions: store.growth.portfolio.positions,
+                            color: AppColor.inverseText.opacity(0.62)
+                        )
                     }
                 }
             }
@@ -559,9 +637,9 @@ private struct DashboardInvestmentCard: View {
     }
 
     private var accessibilityLabel: String {
-        hasNoInvestmentData
-            ? "Investments, no investments yet"
-            : "Investments, portfolio value \(portfolioValue), unrealized \(unrealizedValue)"
+        if hasNoInvestmentData { return "Investments, no investments yet" }
+        if store.hidePortfolioBalances { return "Investments, portfolio balances hidden" }
+        return "Investments, portfolio value \(portfolioValue), unrealized \(unrealizedValue)"
     }
 
     private func money(_ value: String) -> String {
@@ -571,12 +649,17 @@ private struct DashboardInvestmentCard: View {
         )
     }
 
-    private func compactMetric(_ label: String, value: String, color: Color = AppColor.inverseText) -> some View {
+    private func compactMetric(
+        _ label: String,
+        value: String,
+        color: Color = AppColor.inverseText,
+        isHidden: Bool
+    ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(AppColor.inverseText.opacity(0.55))
-            Text(value)
+            PrivacyValueText(value: value, isHidden: isHidden)
                 .font(.caption.weight(.bold).monospacedDigit())
                 .foregroundStyle(color)
                 .lineLimit(1)

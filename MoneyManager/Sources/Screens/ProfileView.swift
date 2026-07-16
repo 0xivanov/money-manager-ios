@@ -61,6 +61,25 @@ struct ProfileView: View {
                     }
                 }
 
+                Section {
+                    Toggle(isOn: $store.hidePortfolioBalances) {
+                        Label("Hide portfolio balances", systemImage: "eye.slash")
+                    }
+                } header: {
+                    Text("Privacy")
+                } footer: {
+                    Text("Masks portfolio values on Home and Invest, including from VoiceOver.")
+                }
+
+                Section("Appearance") {
+                    Picker("Theme", selection: $store.appAppearance) {
+                        ForEach(AppAppearance.allCases) { appearance in
+                            Text(appearance.title).tag(appearance)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
                 Section("Data") {
                     Button {
                         isImportPickerPresented = true

@@ -1,6 +1,22 @@
 import Foundation
 import Observation
 
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class MoneyManagerStore {
@@ -12,7 +28,9 @@ final class MoneyManagerStore {
 
     let api: MoneyManagerAPI
     let tokenStore: TokenStore
+    @ObservationIgnored private let preferences: UserDefaults
     @ObservationIgnored var refreshTask: Task<Void, Never>?
+    @ObservationIgnored var categoryClassificationTask: Task<Void, Never>?
     @ObservationIgnored var refreshGeneration = 0
     @ObservationIgnored var sessionGeneration = 0
     @ObservationIgnored var openBankingReloadRequested = false
@@ -54,7 +72,7 @@ final class MoneyManagerStore {
     var selectedExpenseCategory: String?
     var editingID: Int?
     var formType = TransactionType.expense.rawValue
-    var formCategory = "food"
+    var formCategory = "groceries"
     var formDescription = ""
     var formAmount = ""
     var formOccurredAt = Date()
@@ -67,12 +85,32 @@ final class MoneyManagerStore {
     var importResultMessage: String?
     var isImporting = false
     var growth: GrowthStore
+    var hidePortfolioBalances: Bool {
+        didSet {
+            preferences.set(hidePortfolioBalances, forKey: PreferenceKey.hidePortfolioBalances)
+        }
+    }
+    var appAppearance: AppAppearance {
+        didSet {
+            preferences.set(appAppearance.rawValue, forKey: PreferenceKey.appAppearance)
+        }
+    }
 
-    init(api: MoneyManagerAPI = MoneyManagerAPI(), tokenStore: TokenStore = TokenStore()) {
+    init(
+        api: MoneyManagerAPI = MoneyManagerAPI(),
+        tokenStore: TokenStore = TokenStore(),
+        preferences: UserDefaults = .standard
+    ) {
         self.api = api
         self.tokenStore = tokenStore
+        self.preferences = preferences
         self.token = tokenStore.getToken()
         self.growth = GrowthStore(api: api)
+        self.hidePortfolioBalances = preferences.object(
+            forKey: PreferenceKey.hidePortfolioBalances
+        ) as? Bool ?? true
+        self.appAppearance = preferences.string(forKey: PreferenceKey.appAppearance)
+            .flatMap(AppAppearance.init(rawValue:)) ?? .system
     }
 
     var isAuthenticated: Bool {
@@ -82,4 +120,9 @@ final class MoneyManagerStore {
     var apiBaseURL: URL {
         api.baseURL
     }
+}
+
+private enum PreferenceKey {
+    static let hidePortfolioBalances = "privacy.hidePortfolioBalances"
+    static let appAppearance = "appearance"
 }

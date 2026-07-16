@@ -22,7 +22,9 @@ enum AppColor {
 
     static func category(_ category: String) -> Color {
         switch category.lowercased() {
-        case "food": return Color(red: 0.933, green: 0.416, blue: 0.408)
+        case "groceries": return Color(red: 0.933, green: 0.416, blue: 0.408)
+        case "dining_out": return Color(red: 0.925, green: 0.576, blue: 0.235)
+        case "going_out": return Color(red: 0.671, green: 0.388, blue: 0.745)
         case "transport": return Color(red: 0.455, green: 0.792, blue: 0.753)
         case "housing": return Color(red: 0.384, green: 0.706, blue: 0.800)
         case "utilities": return Color(red: 0.898, green: 0.655, blue: 0.227)
@@ -31,6 +33,7 @@ enum AppColor {
         case "shopping": return Color(red: 0.541, green: 0.345, blue: 0.784)
         case "travel": return Color(red: 0.220, green: 0.663, blue: 0.863)
         case "education": return Color(red: 0.369, green: 0.667, blue: 0.384)
+        case "beauty": return Color(red: 0.843, green: 0.357, blue: 0.557)
         case "salary", "freelance", "gift", "investment", "refund": return income
         default:
             let palette: [Color] = [
@@ -71,12 +74,18 @@ extension View {
 }
 
 func categoryTitle(_ category: String) -> String {
-    category.prefix(1).uppercased() + category.dropFirst()
+    category
+        .replacingOccurrences(of: "_", with: " ")
+        .split(whereSeparator: \Character.isWhitespace)
+        .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+        .joined(separator: " ")
 }
 
 func categorySymbol(_ category: String) -> String {
     switch category.lowercased() {
-    case "food": return "fork.knife"
+    case "groceries": return "cart.fill"
+    case "dining_out": return "fork.knife"
+    case "going_out": return "wineglass.fill"
     case "transport": return "car.fill"
     case "housing": return "house.fill"
     case "utilities": return "bolt.fill"
@@ -85,6 +94,7 @@ func categorySymbol(_ category: String) -> String {
     case "shopping": return "bag.fill"
     case "travel": return "airplane"
     case "education": return "graduationcap.fill"
+    case "beauty": return "scissors"
     case "salary": return "briefcase.fill"
     case "freelance": return "laptopcomputer"
     case "gift": return "gift.fill"
