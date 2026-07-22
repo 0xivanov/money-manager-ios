@@ -46,9 +46,6 @@
 		001001000000000000000038 /* AIActionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000038 /* AIActionsView.swift */; };
 		001001000000000000000040 /* OnDeviceAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000040 /* OnDeviceAIService.swift */; };
 		001001000000000000000041 /* AIInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000041 /* AIInsightsView.swift */; };
-		001001000000000000000043 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 015000000000000000000003 /* MLXLLM */; };
-		001001000000000000000044 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 015000000000000000000004 /* MLXLMCommon */; };
-		001001000000000000000045 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 015000000000000000000005 /* MLX */; };
 		001002000000000000000001 /* MoneyManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002002000000000000000001 /* MoneyManagerTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -112,9 +109,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				001001000000000000000043 /* MLXLLM in Frameworks */,
-				001001000000000000000044 /* MLXLMCommon in Frameworks */,
-				001001000000000000000045 /* MLX in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -289,9 +283,6 @@
 			);
 			name = MoneyManager;
 			packageProductDependencies = (
-				015000000000000000000003 /* MLXLLM */,
-				015000000000000000000004 /* MLXLMCommon */,
-				015000000000000000000005 /* MLX */,
 			);
 			productName = MoneyManager;
 			productReference = 006000000000000000000001 /* MoneyManager.app */;
@@ -344,8 +335,6 @@
 			);
 			mainGroup = 008000000000000000000001;
 			packageReferences = (
-				015000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
-				015000000000000000000002 /* XCRemoteSwiftPackageReference "mlx-swift" */,
 			);
 			productRefGroup = 008000000000000000000020 /* Products */;
 			projectDirPath = "";
@@ -438,43 +427,6 @@
 			targetProxy = 003000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		015000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
-			requirement = {
-				kind = exactVersion;
-				version = 2.31.3;
-			};
-		};
-		015000000000000000000002 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift";
-			requirement = {
-				kind = exactVersion;
-				version = 0.31.3;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		015000000000000000000003 /* MLXLLM */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 015000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
-			productName = MLXLLM;
-		};
-		015000000000000000000004 /* MLXLMCommon */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 015000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
-			productName = MLXLMCommon;
-		};
-		015000000000000000000005 /* MLX */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 015000000000000000000002 /* XCRemoteSwiftPackageReference "mlx-swift" */;
-			productName = MLX;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		013000000000000000000001 /* Debug */ = {

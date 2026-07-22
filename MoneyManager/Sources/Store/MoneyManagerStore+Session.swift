@@ -3,10 +3,24 @@ import Foundation
 extension MoneyManagerStore {
     func bootstrap() async {
         let generation = sessionGeneration
-        await checkHealth()
-        guard generation == sessionGeneration, let savedToken = token else { return }
-        dashboardLoadState = .loading
+        guard generation == sessionGeneration else { return }
+        guard let savedToken = token else {
+            authenticationState = .signedOut
+            await checkHealth()
+            return
+        }
+        authenticationState = .restoring
         do {
+            // Validate the persisted credential before authenticated views appear.
+            // Their task modifiers otherwise race session restoration and can send
+            // a burst of requests with an expired or not-yet-restored session.
+            let user = try await api.getCurrentUser(token: savedToken)
+            try requireCurrentSession(token: savedToken, generation: generation)
+            email = user.email
+            authenticationState = .authenticated
+            dashboardLoadState = .loading
+            async let healthCheck: Void = checkHealth()
+
             async let expenseResult = api.getCategories(token: savedToken, type: TransactionType.expense.rawValue)
             async let incomeResult = api.getCategories(token: savedToken, type: TransactionType.income.rawValue)
             let (expenses, income) = try await (expenseResult, incomeResult)
@@ -15,19 +29,7 @@ extension MoneyManagerStore {
             incomeCategories = income
             await refresh()
             try requireCurrentSession(token: savedToken, generation: generation)
-
-            do {
-                let user = try await api.getCurrentUser(token: savedToken)
-                try requireCurrentSession(token: savedToken, generation: generation)
-                email = user.email
-            } catch APIError.unauthorized {
-                guard isCurrentSession(token: savedToken, generation: generation) else { return }
-                expireSession(message: APIError.unauthorized.localizedDescription)
-            } catch is CancellationError {
-                return
-            } catch {
-                // Core financial data remains usable if optional profile hydration fails.
-            }
+            await healthCheck
         } catch APIError.unauthorized {
             guard isCurrentSession(token: savedToken, generation: generation) else { return }
             expireSession(message: APIError.unauthorized.localizedDescription)
@@ -35,8 +37,20 @@ extension MoneyManagerStore {
             return
         } catch {
             guard isCurrentSession(token: savedToken, generation: generation) else { return }
-            dashboardLoadState = .failed(error.localizedDescription)
+            if authenticationState == .restoring {
+                authenticationState = .restorationFailed(error.localizedDescription)
+            } else {
+                dashboardLoadState = .failed(error.localizedDescription)
+            }
         }
+    }
+
+    func retrySessionRestoration() {
+        guard token != nil else {
+            authenticationState = .signedOut
+            return
+        }
+        Task { await bootstrap() }
     }
 
     func submitAuth() {
@@ -53,6 +67,7 @@ extension MoneyManagerStore {
                 try self.requireCurrentGeneration(generation)
                 self.tokenStore.saveToken(result.token)
                 self.token = result.token
+                self.authenticationState = .authenticated
                 self.email = result.user.email
                 self.password = ""
                 self.dashboardLoadState = .loading
@@ -116,6 +131,7 @@ extension MoneyManagerStore {
         isDeletingAccount = false
         tokenStore.clearToken()
         token = nil
+        authenticationState = .signedOut
         if clearEmail { email = "" }
         password = ""
         error = nil
@@ -162,7 +178,7 @@ extension MoneyManagerStore {
         switch eventType {
         case "bank_spending", "scheduled_transaction_posted", "scheduled_transaction_due":
             selectedTab = .transactions
-        case "investment_reminder":
+        case "investment_reminder", "scheduled_investment_posted":
             selectedTab = .investments
         case "budget_alert":
             selectedTab = .dashboard

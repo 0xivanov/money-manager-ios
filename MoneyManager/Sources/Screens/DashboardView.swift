@@ -291,7 +291,6 @@ struct DashboardView: View {
 private struct DashboardContent: View {
     @Bindable var store: MoneyManagerStore
     let summary: TransactionSummary
-    @State private var modelManager = OnDeviceModelManager.shared
 
     var body: some View {
         if case .failed(let message) = store.dashboardLoadState {
@@ -313,27 +312,13 @@ private struct DashboardContent: View {
                 .listRowBackground(Color.clear)
         }
 
-        if modelManager.isModelInstalled {
-            Section("AI Insights") {
-                DashboardAIInsightsCard(
-                    store: store,
-                    summary: summary
-                )
-                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
-                    .listRowBackground(Color.clear)
-            }
-        } else {
-            Section("AI") {
-                NavigationLink {
-                    AIInsightsView(store: store)
-                } label: {
-                    PlanningLinkRow(
-                        icon: "sparkles",
-                        title: "AI Insights",
-                        detail: "Set up optional on-device Qwen"
-                    )
-                }
-            }
+        Section("Financial Insights") {
+            DashboardAIInsightsCard(
+                store: store,
+                summary: summary
+            )
+                .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
+                .listRowBackground(Color.clear)
         }
 
         Section("Investments") {
@@ -382,10 +367,9 @@ private struct DashboardContent: View {
 private struct DashboardAIInsightsCard: View {
     @Bindable var store: MoneyManagerStore
     let summary: TransactionSummary
-    @State private var insightText = ""
+    @State private var report: MonthlyFinancialReport?
     @State private var generatedAt: Date?
     @State private var isGenerating = false
-    @State private var generationError: String?
 
     var body: some View {
         AppCard(padding: 18) {
@@ -406,7 +390,7 @@ private struct DashboardAIInsightsCard: View {
                             .foregroundStyle(AppColor.mutedText)
                     }
                     Spacer()
-                    if !insightText.isEmpty {
+                    if report != nil {
                         Button {
                             Task { await generateInsights() }
                         } label: {
@@ -422,26 +406,35 @@ private struct DashboardAIInsightsCard: View {
                 if isGenerating {
                     HStack(spacing: 10) {
                         ProgressView()
-                        Text("Generating locally")
+                        Text("Calculating on this device")
                             .font(.subheadline)
                             .foregroundStyle(AppColor.mutedText)
                     }
-                } else if !insightText.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(AIInsightText.lines(insightText).enumerated()), id: \.offset) { _, line in
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text("•")
+                } else if let report {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(report.summary)
+                            .font(.subheadline)
+                        if let topFinding = report.allFindings.sorted(by: findingPriority).first {
+                            Divider()
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(topFinding.title)
+                                    .font(.subheadline.weight(.semibold))
+                                Text(topFinding.supportingMetric)
+                                    .font(.caption.monospacedDigit())
                                     .foregroundStyle(AppColor.financeGreen)
-                                Text(AIInsightText.markdown(line))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
+                        NavigationLink {
+                            AIInsightsView(store: store)
+                        } label: {
+                            Text("View full analysis")
+                                .font(.subheadline.weight(.semibold))
+                        }
                     }
-                    .font(.subheadline)
                     .textSelection(.enabled)
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Generate private insights from every payment this month, budgets, portfolio, and this month’s scheduled money.")
+                        Text("Review calculated cash flow, budget pressure, unusual payments, scheduled money, and portfolio concentration.")
                             .font(.subheadline)
                             .foregroundStyle(AppColor.mutedText)
                         Button {
@@ -454,23 +447,11 @@ private struct DashboardAIInsightsCard: View {
                     }
                 }
 
-                if let generationError {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(generationError)
-                            .font(.footnote)
-                            .foregroundStyle(AppColor.expense)
-                        Button("Try again") {
-                            Task { await generateInsights() }
-                        }
-                        .font(.footnote.weight(.semibold))
-                        .disabled(isGenerating)
-                    }
-                }
             }
         }
         .task(id: cacheKey) {
             let cached = AIInsightCache.load(userID: store.email, month: summary.month)
-            insightText = cached?.text ?? ""
+            report = cached?.report
             generatedAt = cached?.generatedAt
         }
     }
@@ -479,20 +460,40 @@ private struct DashboardAIInsightsCard: View {
         "\(store.email.lowercased())|\(summary.month)"
     }
 
+    private func findingPriority(_ lhs: FinancialInsight, _ rhs: FinancialInsight) -> Bool {
+        severityRank(lhs.severity) > severityRank(rhs.severity)
+    }
+
+    private func severityRank(_ severity: FinancialInsightSeverity) -> Int {
+        switch severity {
+        case .informational: 0
+        case .moderate: 1
+        case .high: 2
+        }
+    }
+
     @MainActor
     private func generateInsights() async {
         guard !isGenerating else { return }
         isGenerating = true
-        generationError = nil
         defer { isGenerating = false }
-        do {
-            insightText = try await AIInsightGeneration.generate(store: store, summary: summary)
-            generatedAt = Date()
-        } catch is CancellationError {
-            return
-        } catch {
-            generationError = error.localizedDescription
-        }
+        let analytics = FinancialAnalyticsEngine.analyze(
+            summary: summary,
+            transactions: store.transactions,
+            budgets: store.growth.budgets,
+            scheduledOccurrences: store.growth.scheduleOccurrences,
+            portfolio: store.growth.portfolio
+        )
+        let generated = await FinancialIntelligenceService.shared.generateReport(analytics: analytics)
+        let timestamp = Date()
+        report = generated
+        generatedAt = timestamp
+        AIInsightCache.save(
+            report: generated,
+            userID: store.email,
+            month: summary.month,
+            generatedAt: timestamp
+        )
     }
 }
 

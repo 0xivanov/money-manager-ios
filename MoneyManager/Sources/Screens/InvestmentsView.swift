@@ -242,7 +242,6 @@ struct InvestmentView: View {
 
 private struct PortfolioAIQuestionCard: View {
     @Bindable var store: MoneyManagerStore
-    @State private var modelManager = OnDeviceModelManager.shared
     @State private var question = ""
     @State private var submittedQuestion = ""
     @State private var answer = ""
@@ -261,10 +260,8 @@ private struct PortfolioAIQuestionCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 header
 
-                if !modelManager.isModelInstalled {
-                    setupState
-                } else if store.growth.portfolio.positions.isEmpty {
-                    Text("Record a holding before asking Qwen about your portfolio.")
+                if store.growth.portfolio.positions.isEmpty {
+                    Text("Record a holding before analysing your portfolio.")
                         .font(.subheadline)
                         .foregroundStyle(AppColor.mutedText)
                 } else {
@@ -291,23 +288,9 @@ private struct PortfolioAIQuestionCard: View {
                 Text("Ask about your portfolio")
                     .font(.headline)
                     .foregroundStyle(AppColor.nearBlack)
-                Text("Powered by Qwen on this iPhone")
+                Text("Calculated locally, explained by Apple Intelligence when available")
                     .font(.caption)
                     .foregroundStyle(AppColor.mutedText)
-            }
-        }
-    }
-
-    private var setupState: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Download Qwen from Profile to ask questions about holdings, allocation, and performance.")
-                .font(.subheadline)
-                .foregroundStyle(AppColor.mutedText)
-            Button {
-                store.selectedTab = .profile
-            } label: {
-                Label("Open AI settings", systemImage: "person.crop.circle")
-                    .font(.subheadline.weight(.semibold))
             }
         }
     }
@@ -354,7 +337,7 @@ private struct PortfolioAIQuestionCard: View {
             } label: {
                 HStack(spacing: 8) {
                     if isAnswering { ProgressView().tint(AppColor.primaryText) }
-                    Label(isAnswering ? "Thinking on device" : "Ask Qwen", systemImage: "arrow.up.circle.fill")
+                    Label(isAnswering ? "Analysing on device" : "Analyse", systemImage: "arrow.up.circle.fill")
                         .font(.subheadline.weight(.bold))
                 }
                 .frame(maxWidth: .infinity)
@@ -425,20 +408,10 @@ private struct PortfolioAIQuestionCard: View {
         errorMessage = nil
         defer { isAnswering = false }
 
-        do {
-            let prompt = PortfolioQuestionPrompt.make(
-                question: submitted,
-                portfolio: store.growth.portfolio,
-                history: store.growth.portfolioHistory,
-                trades: store.growth.investmentTrades,
-                schedules: store.growth.investmentSchedules
-            )
-            answer = try await OnDeviceAIService.shared.answerPortfolioQuestion(prompt: prompt)
-        } catch is CancellationError {
-            return
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        answer = await FinancialIntelligenceService.shared.answerPortfolioQuestion(
+            question: submitted,
+            portfolio: store.growth.portfolio
+        )
     }
 }
 

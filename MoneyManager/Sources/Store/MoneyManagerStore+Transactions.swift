@@ -229,7 +229,7 @@ extension MoneyManagerStore {
                 guard let token = self.token else { return }
                 let result = try await self.api.importRevolutCSV(token: token, data: data)
                 try self.requireCurrentSession(token: token, generation: generation)
-                self.importResultMessage = "Imported \(result.imported). Skipped \(result.skipped) duplicates and \(result.ignored) unsupported rows. Qwen will review uncategorized payments."
+                self.importResultMessage = "Imported \(result.imported). Skipped \(result.skipped) duplicates and \(result.ignored) unsupported rows. Recognised merchants are categorized on this device; uncertain payments remain in Other for review."
                 await self.refresh()
             }
         }
@@ -242,18 +242,12 @@ extension MoneyManagerStore {
         month requestedMonth: String
     ) {
         categoryClassificationTask?.cancel()
-        guard OnDeviceModelManager.shared.isModelInstalled,
-            OnDeviceModelManager.shared.isClassificationEnabled
-        else {
-            categoryClassificationTask = nil
-            return
-        }
         let candidates = Array(sourceTransactions.filter { transaction in
             Self.shouldRequestClarification(
                 for: transaction,
                 dismissedTransactionIDs: dismissedClarificationTransactionIDs
             )
-        }.prefix(OnDeviceInferenceConfig.classificationBatchSize))
+        }.prefix(DeterministicTransactionClassifier.maxBatchSize))
         guard !candidates.isEmpty else {
             categoryClassificationTask = nil
             return
@@ -262,9 +256,8 @@ extension MoneyManagerStore {
         categoryClassificationTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let assessments = try await OnDeviceAIService.shared.classifyTransactions(
+                let assessments = DeterministicTransactionClassifier.classify(
                     candidates,
-                    contextTransactions: sourceTransactions,
                     allowedCategoriesByType: [
                         TransactionType.expense.rawValue: self.expenseCategories.map(\.name),
                         TransactionType.income.rawValue: self.incomeCategories.map(\.name),
@@ -275,13 +268,7 @@ extension MoneyManagerStore {
                 for assessment in assessments {
                     try Task.checkCancellation()
                     guard let transaction = transactionsByID[assessment.transactionID] else { continue }
-                    guard let category = assessment.category else {
-                        self.enqueueTransactionClarification(
-                            transaction: transaction,
-                            question: assessment.clarificationQuestion
-                        )
-                        continue
-                    }
+                    guard let category = assessment.category else { continue }
                     let request = TransactionRequest(
                         type: transaction.type,
                         category: category,
@@ -355,12 +342,8 @@ extension MoneyManagerStore {
         )
 
         do {
-            let contextTransactions = transactions.map {
-                $0.id == enriched.id ? enriched : $0
-            }
-            let assessment = try await OnDeviceAIService.shared.classifyTransactions(
+            let assessment = DeterministicTransactionClassifier.classify(
                 [enriched],
-                contextTransactions: contextTransactions,
                 allowedCategoriesByType: [
                     TransactionType.expense.rawValue: expenseCategories.map(\.name),
                     TransactionType.income.rawValue: incomeCategories.map(\.name),
@@ -399,12 +382,40 @@ extension MoneyManagerStore {
         advanceTransactionClarificationQueue()
     }
 
+    var uncategorizedReviewCount: Int {
+        transactions.filter {
+            Self.shouldRequestClarification(
+                for: $0,
+                dismissedTransactionIDs: dismissedClarificationTransactionIDs
+            )
+        }.count
+    }
+
+    func beginUncategorizedReview() {
+        activeTransactionClarification = nil
+        queuedTransactionClarifications = []
+        transactions.filter {
+            Self.shouldRequestClarification(
+                for: $0,
+                dismissedTransactionIDs: dismissedClarificationTransactionIDs
+            )
+        }
+        .prefix(DeterministicTransactionClassifier.maxBatchSize)
+        .forEach {
+            enqueueTransactionClarification(
+                transaction: $0,
+                question: "What was this payment for?"
+            )
+        }
+    }
+
     nonisolated static func shouldRequestClarification(
         for transaction: Transaction,
         dismissedTransactionIDs: Set<Int>
     ) -> Bool {
         guard transaction.category.caseInsensitiveCompare("other") == .orderedSame,
             transaction.source == "import" || transaction.source == "open_banking",
+            !transaction.isInvestmentRelated,
             !dismissedTransactionIDs.contains(transaction.id)
         else { return false }
 

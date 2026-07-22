@@ -11,7 +11,7 @@ extension MoneyManagerStore {
         transactions
             .filter {
                 $0.type == TransactionType.expense.rawValue
-                    && ($0.purpose ?? "spending") == "spending"
+                    && !$0.isInvestmentRelated
             }
             .reduce(into: [String: Decimal]()) { totals, transaction in
                 totals[transaction.category, default: .zero] += MoneyFormat.decimal(from: transaction.amount)
@@ -63,7 +63,7 @@ extension MoneyManagerStore {
         return transactions.first { transaction in
             guard !matchedIDs.contains(transaction.id),
                 transaction.type == TransactionType.expense.rawValue,
-                (transaction.purpose ?? "spending") == "investment_transfer",
+                transaction.isInvestmentRelated,
                 transaction.currency.caseInsensitiveCompare(trade.currency) == .orderedSame,
                 let transferDate = DateFormat.apiDate(transaction.occurredAt),
                 abs(transferDate.timeIntervalSince(tradeDate)) <= 3 * 24 * 60 * 60

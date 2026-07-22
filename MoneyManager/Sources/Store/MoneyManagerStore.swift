@@ -17,6 +17,13 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     }
 }
 
+enum AuthenticationState: Equatable {
+    case restoring
+    case authenticated
+    case signedOut
+    case restorationFailed(String)
+}
+
 @MainActor
 @Observable
 final class MoneyManagerStore {
@@ -40,6 +47,7 @@ final class MoneyManagerStore {
     @ObservationIgnored var activeRequestIDs: Set<UUID> = []
 
     var token: String?
+    var authenticationState: AuthenticationState
     var email = ""
     var password = ""
     var selectedTab: AppTab = .dashboard
@@ -111,7 +119,9 @@ final class MoneyManagerStore {
         self.api = api
         self.tokenStore = tokenStore
         self.preferences = preferences
-        self.token = tokenStore.getToken()
+        let savedToken = tokenStore.getToken()
+        self.token = savedToken
+        self.authenticationState = savedToken == nil ? .signedOut : .restoring
         self.growth = GrowthStore(api: api)
         self.dismissedClarificationTransactionIDs = Set(
             preferences.array(forKey: PreferenceKey.dismissedTransactionClarificationIDs)?
@@ -125,7 +135,7 @@ final class MoneyManagerStore {
     }
 
     var isAuthenticated: Bool {
-        token != nil
+        authenticationState == .authenticated
     }
 
     func rememberDismissedTransactionClarification(id: Int) {

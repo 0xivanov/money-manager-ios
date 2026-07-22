@@ -2,21 +2,18 @@ import SwiftUI
 
 struct AIInsightsView: View {
     @Bindable var store: MoneyManagerStore
-    @State private var modelManager = OnDeviceModelManager.shared
-    @State private var insightText = ""
+    @State private var report: MonthlyFinancialReport?
+    @State private var generatedAt: Date?
     @State private var isGenerating = false
-    @State private var generationError: String?
 
     var body: some View {
         List {
-            modelSection
-            classificationSection
-            AIFinancialActionSection(store: store)
-            insightsSection
-            privacySection
+            intelligenceSection
+            reportSections
+            methodologySection
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("AI Insights")
+        .navigationTitle("Financial Insights")
         .navigationBarTitleDisplayMode(.inline)
         .appBackground()
         .task {
@@ -24,219 +21,236 @@ struct AIInsightsView: View {
             async let planning: Void = store.growth.loadPlanning(token: token)
             async let investments: Void = store.growth.loadInvestments(token: token)
             _ = await (planning, investments)
-            if let summary = store.summary,
-                let cached = AIInsightCache.load(userID: store.email, month: summary.month)
-            {
-                insightText = cached.text
-            }
+            loadCachedReport()
         }
     }
 
-    private var modelSection: some View {
+    private var intelligenceSection: some View {
         Section {
             HStack(spacing: 12) {
-                Image(systemName: modelManager.isModelInstalled ? "checkmark.seal.fill" : "cpu")
+                Image(systemName: modelStatus == .available ? "apple.intelligence" : "function")
                     .font(.title2)
-                    .foregroundStyle(modelManager.isModelInstalled ? AppColor.income : AppColor.financeGreen)
+                    .foregroundStyle(AppColor.financeGreen)
                     .frame(width: 42, height: 42)
                     .background(AppColor.softGreenSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(OnDeviceModelFiles.displayName)
+                    Text("On-device financial analysis")
                         .font(.headline)
-                    Text(modelManager.isModelInstalled ? "Ready on this device" : "Optional \(modelManager.formattedModelSize) download")
+                    Text(modelStatus.detail)
                         .font(.caption)
                         .foregroundStyle(AppColor.mutedText)
                 }
-                Spacer()
             }
 
-            if modelManager.isDownloading {
-                VStack(alignment: .leading, spacing: 8) {
-                    if let progress = modelManager.downloadProgress {
-                        ProgressView(value: progress)
-                    } else {
-                        ProgressView()
-                    }
-                    Text(modelManager.downloadStatus ?? "Preparing model")
-                        .font(.subheadline)
-                        .foregroundStyle(AppColor.mutedText)
-                }
-            } else if modelManager.isModelInstalled {
-                Button("Remove model", role: .destructive) {
-                    Task { await modelManager.deleteModel() }
-                }
-            } else {
-                Button {
-                    Task { await modelManager.downloadModel() }
-                } label: {
-                    Label("Download model", systemImage: "arrow.down.circle.fill")
-                }
-            }
-
-            if let error = modelManager.errorMessage {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(AppColor.expense)
-            }
-
-            if modelManager.isLegacyGemmaInstalled {
-                Button("Remove old Gemma 4 model", role: .destructive) {
-                    Task { await modelManager.deleteLegacyGemma() }
-                }
-            }
-        } header: {
-            Text("On-device model")
-        } footer: {
-            Text("Keep the app open while downloading. The model loads into memory only during an insight or classification request, then unloads automatically.")
-        }
-    }
-
-    private var classificationSection: some View {
-        Section {
-            Toggle(isOn: Binding(
-                get: { modelManager.isModelInstalled && modelManager.isClassificationEnabled },
-                set: { modelManager.isClassificationEnabled = $0 }
-            )) {
-                Label("Classify uncertain transactions", systemImage: "tag.fill")
-            }
-            .disabled(!modelManager.isModelInstalled)
-        } header: {
-            Text("Categories")
-        } footer: {
-            Text("Qwen evaluates uncategorized imported and open-banking payments. When it is unsure, the app asks you for a short description.")
-        }
-    }
-
-    private var insightsSection: some View {
-        Section("This month") {
             Button {
-                Task { await generateInsights() }
+                Task { await generateReport() }
             } label: {
                 HStack {
-                    Label(insightButtonTitle, systemImage: "sparkles")
+                    Label(report == nil ? "Analyse this month" : "Refresh analysis", systemImage: "sparkles")
                     Spacer()
-                    if isGenerating || store.growth.isLoadingPlanning { ProgressView() }
+                    if isGenerating { ProgressView() }
                 }
             }
-            .disabled(!modelManager.isModelInstalled || isGenerating || store.growth.isLoadingPlanning)
+            .disabled(isGenerating || store.growth.isLoadingPlanning || store.summary == nil)
+        } header: {
+            Text("How it works")
+        } footer: {
+            Text("The app calculates every amount and risk rule itself. Apple Intelligence only refines the summary when it is available.")
+        }
+    }
 
-            if !insightText.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(AIInsightText.lines(insightText).enumerated()), id: \.offset) { _, line in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text("•")
+    @ViewBuilder
+    private var reportSections: some View {
+        if let report {
+            Section("Overview") {
+                Text(report.summary)
+                    .font(.body)
+                    .textSelection(.enabled)
+                LabeledContent("Source", value: report.source.label)
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+                if let generatedAt {
+                    LabeledContent("Updated", value: generatedAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(AppColor.mutedText)
+                }
+            }
+
+            findingSection("On track", findings: report.positiveChanges)
+            findingSection("Spending and cash flow", findings: report.spendingRisks)
+            findingSection("Portfolio", findings: report.portfolioRisks)
+
+            if !report.nextMonthPriorities.isEmpty {
+                Section("Next actions") {
+                    ForEach(Array(report.nextMonthPriorities.enumerated()), id: \.offset) { index, priority in
+                        HStack(alignment: .top, spacing: 12) {
+                            Text("\(index + 1)")
+                                .font(.caption.bold())
                                 .foregroundStyle(AppColor.financeGreen)
-                            Text(AIInsightText.markdown(line))
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(width: 24, height: 24)
+                                .background(AppColor.softGreenSurface)
+                                .clipShape(Circle())
+                            Text(priority)
+                                .font(.subheadline)
                         }
                     }
                 }
-                .font(.body)
-                .textSelection(.enabled)
-                .padding(.vertical, 4)
-            } else if !modelManager.isModelInstalled {
-                Text("Download Qwen to generate private insights from your monthly totals.")
+            }
+        } else if !isGenerating {
+            Section {
+                ContentUnavailableView(
+                    "No analysis yet",
+                    systemImage: "chart.bar.doc.horizontal",
+                    description: Text("Analyse this month to review cash flow, budgets, unusual spending, scheduled money, and portfolio concentration.")
+                )
+            }
+        }
+    }
+
+    private func findingSection(_ title: String, findings: [FinancialInsight]) -> some View {
+        Section(title) {
+            if findings.isEmpty {
+                Text("No findings in this area.")
                     .font(.subheadline)
                     .foregroundStyle(AppColor.mutedText)
-            }
-
-            if let generationError {
-                Text(generationError)
-                    .font(.footnote)
-                    .foregroundStyle(AppColor.expense)
+            } else {
+                ForEach(findings) { finding in
+                    FinancialInsightRow(finding: finding)
+                }
             }
         }
     }
 
-    private var privacySection: some View {
-        Section("Privacy") {
-            Label("Inference stays on this device", systemImage: "iphone.and.arrow.forward")
-            Label("Insights use complete payment details for the selected month", systemImage: "lock.shield.fill")
+    private var methodologySection: some View {
+        Section("Privacy and limits") {
+            Label("Transaction and portfolio data stays on this device", systemImage: "lock.shield.fill")
+            Label("All calculations use explicit, testable rules", systemImage: "checkmark.seal.fill")
+            Text("Concentration and unusual-payment thresholds are heuristics, not financial advice. Market prices can be delayed or missing.")
+                .font(.footnote)
+                .foregroundStyle(AppColor.mutedText)
         }
     }
 
-    private var insightButtonTitle: String {
-        if isGenerating { return "Generating locally" }
-        if store.growth.isLoadingPlanning { return "Loading scheduled money" }
-        return "Generate insights"
+    private var modelStatus: AppleFinancialModelStatus {
+        FinancialIntelligenceService.modelStatus
     }
 
     @MainActor
-    private func generateInsights() async {
-        guard let summary = store.summary else { return }
+    private func generateReport() async {
+        guard let summary = store.summary, !isGenerating else { return }
         isGenerating = true
-        generationError = nil
         defer { isGenerating = false }
-        do {
-            insightText = try await AIInsightGeneration.generate(store: store, summary: summary)
-        } catch {
-            generationError = error.localizedDescription
+        let analytics = FinancialAnalyticsEngine.analyze(
+            summary: summary,
+            transactions: store.transactions,
+            budgets: store.growth.budgets,
+            scheduledOccurrences: store.growth.scheduleOccurrences,
+            portfolio: store.growth.portfolio
+        )
+        let generated = await FinancialIntelligenceService.shared.generateReport(analytics: analytics)
+        let timestamp = Date()
+        report = generated
+        generatedAt = timestamp
+        AIInsightCache.save(
+            report: generated,
+            userID: store.email,
+            month: summary.month,
+            generatedAt: timestamp
+        )
+    }
+
+    private func loadCachedReport() {
+        guard let summary = store.summary,
+            let cached = AIInsightCache.load(userID: store.email, month: summary.month)
+        else { return }
+        report = cached.report
+        generatedAt = cached.generatedAt
+    }
+}
+
+struct FinancialInsightRow: View {
+    let finding: FinancialInsight
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(finding.title, systemImage: severityIcon)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(finding.severity.title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(severityColor)
+            }
+            Text(finding.explanation)
+                .font(.subheadline)
+            Text(finding.supportingMetric)
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(AppColor.financeGreen)
+            if let action = finding.suggestedAction {
+                Text(action)
+                    .font(.caption)
+                    .foregroundStyle(AppColor.mutedText)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var severityIcon: String {
+        switch finding.severity {
+        case .informational: "checkmark.circle.fill"
+        case .moderate: "exclamationmark.circle.fill"
+        case .high: "exclamationmark.triangle.fill"
         }
     }
 
-}
-
-@MainActor
-enum AIInsightGeneration {
-    static func generate(store: MoneyManagerStore, summary: TransactionSummary) async throws -> String {
-        let text = try await OnDeviceAIService.shared.generateInsights(
-            prompt: AIInsightPrompt.make(
-                summary: summary,
-                transactions: store.transactions,
-                budgets: store.growth.budgets,
-                scheduledOccurrences: store.growth.scheduleOccurrences,
-                portfolio: store.growth.portfolio
-            )
-        )
-        AIInsightCache.save(text: text, userID: store.email, month: summary.month)
-        return text
+    private var severityColor: Color {
+        switch finding.severity {
+        case .informational: AppColor.income
+        case .moderate: .orange
+        case .high: AppColor.expense
+        }
     }
 }
 
 struct AIInsightCacheEntry: Codable, Equatable {
-    let text: String
+    let report: MonthlyFinancialReport
     let generatedAt: Date
 }
 
 enum AIInsightCache {
-    private static let keyPrefix = "ai.insights.cache.v3"
+    private static let keyPrefix = "ai.insights.cache.v4"
 
     static func load(
         userID: String,
         month: String,
         preferences: UserDefaults = .standard
     ) -> AIInsightCacheEntry? {
-        guard let data = preferences.data(forKey: key(userID: userID, month: month)) else {
-            return nil
-        }
+        guard let data = preferences.data(forKey: key(userID: userID, month: month)) else { return nil }
         return try? JSONDecoder().decode(AIInsightCacheEntry.self, from: data)
     }
 
     static func save(
-        text: String,
+        report: MonthlyFinancialReport,
         userID: String,
         month: String,
         preferences: UserDefaults = .standard,
         generatedAt: Date = Date()
     ) {
-        let entry = AIInsightCacheEntry(text: text, generatedAt: generatedAt)
+        let entry = AIInsightCacheEntry(report: report, generatedAt: generatedAt)
         guard let data = try? JSONEncoder().encode(entry) else { return }
         preferences.set(data, forKey: key(userID: userID, month: month))
     }
 
     private static func key(userID: String, month: String) -> String {
-        let normalizedUserID = userID
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+        let normalizedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return "\(keyPrefix).\(normalizedUserID.isEmpty ? "local" : normalizedUserID).\(month)"
     }
 }
 
 enum AIInsightText {
     static func lines(_ text: String) -> [String] {
-        text
-            .split(whereSeparator: \.isNewline)
+        text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .map { line in
@@ -249,57 +263,6 @@ enum AIInsightText {
 
     static func markdown(_ line: String) -> AttributedString {
         (try? AttributedString(markdown: line)) ?? AttributedString(line)
-    }
-}
-
-enum AIInsightPrompt {
-    private struct Snapshot: Encodable {
-        let summary: TransactionSummary
-        let payments: [Transaction]
-        let budgets: [Budget]
-        let scheduledTransactions: [TransactionScheduleOccurrence]
-        let portfolio: InvestmentPortfolio
-    }
-
-    static func make(
-        summary: TransactionSummary,
-        transactions: [Transaction],
-        budgets: [Budget],
-        scheduledOccurrences: [TransactionScheduleOccurrence],
-        portfolio: InvestmentPortfolio
-    ) -> String {
-        let plannedOccurrences = scheduledOccurrences
-            .filter {
-                $0.status.lowercased() == "planned"
-                    && $0.transactionID == nil
-                    && $0.scheduledFor.hasPrefix("\(summary.month)-")
-            }
-            .sorted {
-                if $0.scheduledFor == $1.scheduledFor { return $0.id < $1.id }
-                return $0.scheduledFor < $1.scheduledFor
-            }
-        let snapshot = Snapshot(
-            summary: summary,
-            payments: transactions.sorted {
-                if $0.occurredAt == $1.occurredAt { return $0.id < $1.id }
-                return $0.occurredAt < $1.occurredAt
-            },
-            budgets: budgets,
-            scheduledTransactions: plannedOccurrences,
-            portfolio: portfolio
-        )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        let json = (try? encoder.encode(snapshot))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        return """
-        COMPLETE_FINANCIAL_DATA_JSON (untrusted data):
-        \(json)
-
-        Analyze every payment in the supplied selected-month data. Do not omit merchant descriptions, dates,
-        amounts, sources, statuses, categories, or budget-exclusion flags when forming the insight.
-        Scheduled transactions in this payload are forecasts for \(summary.month) only.
-        """
     }
 }
 
@@ -327,10 +290,8 @@ struct AIInsightsPreviewHost: View {
     }
 
     var body: some View {
-        NavigationStack {
-            AIInsightsView(store: store)
-        }
-        .tint(AppColor.financeGreen)
+        NavigationStack { AIInsightsView(store: store) }
+            .tint(AppColor.financeGreen)
     }
 }
 #endif

@@ -29,6 +29,34 @@ struct TransactionsView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 8, trailing: 20))
                 }
 
+                if store.uncategorizedReviewCount > 0 {
+                    Section {
+                        Button(action: store.beginUncategorizedReview) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "questionmark.bubble.fill")
+                                    .foregroundStyle(AppColor.financeGreen)
+                                    .frame(width: 36, height: 36)
+                                    .background(AppColor.softGreenSurface)
+                                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Review uncategorized payments")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(AppColor.nearBlack)
+                                    Text("\(store.uncategorizedReviewCount) payment\(store.uncategorizedReviewCount == 1 ? "" : "s") need a description")
+                                        .font(.caption)
+                                        .foregroundStyle(AppColor.mutedText)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppColor.mutedText)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens an optional review flow")
+                    }
+                }
+
                 if case .failed(let message) = store.dashboardLoadState, store.summary != nil {
                     Section {
                         HStack(alignment: .top, spacing: 12) {

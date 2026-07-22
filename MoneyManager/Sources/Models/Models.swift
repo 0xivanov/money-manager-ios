@@ -79,6 +79,26 @@ struct Transaction: Codable, Identifiable, Equatable {
     }
 }
 
+extension Transaction {
+    /// Imported investment transfers are not always tagged by older server data.
+    /// Recognising the broker description locally keeps them out of spending
+    /// analysis and clarification prompts without rewriting the user's record.
+    var isInvestmentRelated: Bool {
+        if investmentScheduleID != nil { return true }
+
+        let normalizedPurpose = purpose?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalizedPurpose == "investment" || normalizedPurpose == "investment_transfer" {
+            return true
+        }
+
+        let normalizedDescription = description?.folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: .current
+        ).lowercased() ?? ""
+        return normalizedDescription.contains("revolut x")
+    }
+}
+
 struct TransactionRequest: Codable, Equatable {
     let type: String
     let category: String

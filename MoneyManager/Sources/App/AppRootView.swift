@@ -5,23 +5,35 @@ struct AppRootView: View {
 
     var body: some View {
         Group {
-            if store.isAuthenticated {
+            switch store.authenticationState {
+            case .authenticated:
                 AuthenticatedAppView(store: store)
-            } else {
+            case .signedOut:
                 AuthView(store: store)
+            case .restoring:
+                SessionRestorationView()
+            case .restorationFailed(let message):
+                SessionRestorationFailureView(
+                    message: message,
+                    retry: store.retrySessionRestoration
+                )
             }
         }
         .tint(AppColor.financeGreen)
         .preferredColorScheme(store.appAppearance.colorScheme)
         .task {
+            LegacyLocalModelCleanup.removeDownloadedModels()
             await store.bootstrap()
-            if PushConfiguration.isEnabled, let eventType = PushEventStore.pending {
+            if store.isAuthenticated,
+               PushConfiguration.isEnabled,
+               let eventType = PushEventStore.pending {
                 store.handlePushEvent(eventType)
                 PushEventStore.pending = nil
             }
         }
-        .task(id: store.token) {
+        .task(id: store.isAuthenticated) {
             guard PushConfiguration.isEnabled else { return }
+            guard store.isAuthenticated else { return }
             guard let token = store.token, let deviceToken = PushDeviceTokenStore.current else { return }
             await store.growth.registerPushDevice(token: token, deviceToken: deviceToken)
         }
@@ -30,6 +42,7 @@ struct AppRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .pushDeviceTokenReceived)) { notification in
             guard PushConfiguration.isEnabled else { return }
+            guard store.isAuthenticated else { return }
             guard let token = store.token, let deviceToken = notification.object as? String else { return }
             Task { await store.growth.registerPushDevice(token: token, deviceToken: deviceToken) }
         }
@@ -45,9 +58,49 @@ struct AppRootView: View {
             store.handlePushEvent(eventType)
             PushEventStore.pending = nil
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
-            Task { await OnDeviceAIService.shared.unload() }
+    }
+}
+
+private struct SessionRestorationView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .controlSize(.large)
+                .tint(AppColor.financeGreen)
+            Text("Opening Money Manager")
+                .font(.headline)
+                .foregroundStyle(AppColor.primaryText)
+            Text("Restoring your secure session…")
+                .font(.subheadline)
+                .foregroundStyle(AppColor.mutedText)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .appBackground()
+    }
+}
+
+private struct SessionRestorationFailureView: View {
+    let message: String
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(AppColor.expense)
+            Text("Couldn’t connect")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(AppColor.primaryText)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(AppColor.mutedText)
+                .multilineTextAlignment(.center)
+            Button("Try again", action: retry)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .appBackground()
     }
 }
 
