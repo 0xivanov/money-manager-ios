@@ -86,8 +86,6 @@ final class MoneyManagerStore {
     var formAmount = ""
     var formOccurredAt = Date()
     var formExcludedFromBudget = false
-    var formPurpose = "spending"
-    var formInvestmentScheduleID: Int?
     var expenseCategories: [Category] = []
     var incomeCategories: [Category] = []
     var newCategoryName = ""

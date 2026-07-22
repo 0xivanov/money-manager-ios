@@ -78,18 +78,7 @@ enum FinancialAnalyticsEngine {
         portfolio: InvestmentPortfolio
     ) -> FinancialAnalytics {
         let income = MoneyFormat.decimal(from: summary.income)
-        let inferredLegacyInvestmentTransfers = transactions.filter {
-            let purpose = $0.purpose?.lowercased()
-            return $0.type == TransactionType.expense.rawValue
-                && $0.occurredAt.hasPrefix(summary.month)
-                && $0.isInvestmentRelated
-                && purpose != "investment"
-                && purpose != "investment_transfer"
-        }.reduce(Decimal.zero) { $0 + MoneyFormat.decimal(from: $1.amount) }
-        let spending = max(
-            MoneyFormat.decimal(from: summary.expense) - inferredLegacyInvestmentTransfers,
-            .zero
-        )
+        let spending = MoneyFormat.decimal(from: summary.expense)
         let balance = income - spending
         let savingsRate = income > .zero ? balance / income : nil
         let currency = summary.currency
@@ -106,7 +95,6 @@ enum FinancialAnalyticsEngine {
         let selectedExpenses = transactions.filter {
             $0.type == TransactionType.expense.rawValue
                 && $0.occurredAt.hasPrefix(summary.month)
-                && !$0.isInvestmentRelated
         }
         if let categoryFinding = largestCategoryFinding(
             transactions: selectedExpenses,

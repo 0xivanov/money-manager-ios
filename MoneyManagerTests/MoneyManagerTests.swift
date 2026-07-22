@@ -395,7 +395,7 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertFalse(finding?.explanation.contains("Rent") == true)
     }
 
-    func testAnalyticsExcludesLegacyBrokerTransferFromSpending() {
+    func testAnalyticsIncludesBrokerTransferInSpending() {
         let summary = TransactionSummary(
             month: "2026-07", income: "1000.00", expense: "625.00",
             balance: "375.00", currency: "EUR", transactionCount: 2
@@ -419,9 +419,9 @@ final class MoneyManagerTests: XCTestCase {
             portfolio: .empty
         )
 
-        XCTAssertEqual(analytics.monthlySpending, Decimal(string: "600.00"))
-        XCTAssertEqual(analytics.monthlyBalance, Decimal(string: "400.00"))
-        XCTAssertEqual(analytics.savingsRate, Decimal(string: "0.40"))
+        XCTAssertEqual(analytics.monthlySpending, Decimal(string: "625.00"))
+        XCTAssertEqual(analytics.monthlyBalance, Decimal(string: "375.00"))
+        XCTAssertEqual(analytics.savingsRate, Decimal(string: "0.375"))
     }
 
     func testAIInsightCachePersistsPerUserAndMonth() throws {
@@ -545,20 +545,8 @@ final class MoneyManagerTests: XCTestCase {
         ))
     }
 
-    func testInvestmentTransferNeverRequestsSpendingClarification() {
-        let taggedTransfer = Transaction(
-            id: 74,
-            type: "expense",
-            category: "other",
-            description: "EUR → Revolut X",
-            amount: "25.00",
-            currency: "EUR",
-            occurredAt: "2026-07-18",
-            source: "import",
-            purpose: "investment"
-        )
-
-        let legacyImportedTransfer = Transaction(
+    func testBrokerTransferCanRequestSpendingClarification() {
+        let transfer = Transaction(
             id: 75,
             type: "expense",
             category: "other",
@@ -569,15 +557,10 @@ final class MoneyManagerTests: XCTestCase {
             source: "import"
         )
 
-        XCTAssertFalse(MoneyManagerStore.shouldRequestClarification(
-            for: taggedTransfer,
+        XCTAssertTrue(MoneyManagerStore.shouldRequestClarification(
+            for: transfer,
             dismissedTransactionIDs: []
         ))
-        XCTAssertFalse(MoneyManagerStore.shouldRequestClarification(
-            for: legacyImportedTransfer,
-            dismissedTransactionIDs: []
-        ))
-        XCTAssertTrue(legacyImportedTransfer.isInvestmentRelated)
     }
 
     @MainActor
@@ -608,12 +591,12 @@ final class MoneyManagerTests: XCTestCase {
         ]
 
         XCTAssertNil(store.activeTransactionClarification)
-        XCTAssertEqual(store.uncategorizedReviewCount, 1)
+        XCTAssertEqual(store.uncategorizedReviewCount, 2)
 
         store.beginUncategorizedReview()
 
         XCTAssertEqual(store.activeTransactionClarification?.id, 80)
-        XCTAssertTrue(store.queuedTransactionClarifications.isEmpty)
+        XCTAssertEqual(store.queuedTransactionClarifications.map(\.id), [81])
     }
 
     func testDecodesPlanningAndInvestmentContracts() throws {
@@ -1021,19 +1004,17 @@ final class MoneyManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testInvestmentTransferIsNotSpendingAndMatchesRevolutXBuy() {
+    func testOrdinaryExpenseDoesNotMatchInvestmentBuy() {
         let store = MoneyManagerStore()
         store.transactions = [
             Transaction(
                 id: 10,
                 type: "expense",
-                category: "investment_transfer",
+                category: "other",
                 description: "Transfer to Revolut X",
                 amount: "25.00",
                 currency: "EUR",
-                occurredAt: "2026-07-11",
-                excludedFromBudget: true,
-                purpose: "investment_transfer"
+                occurredAt: "2026-07-11"
             ),
             Transaction(id: 11, type: "expense", category: "groceries", amount: "40.00", currency: "EUR", occurredAt: "2026-07-11")
         ]
@@ -1050,9 +1031,9 @@ final class MoneyManagerTests: XCTestCase {
             transactionCount: 2
         )
 
-        XCTAssertEqual(store.expenseCategoryTotals.map(\.category), ["groceries"])
-        XCTAssertEqual(store.monthlyInvestmentCashFlow(month: "2026-07", currency: "EUR"), .zero)
-        XCTAssertEqual(store.balanceAfterInvestments(summary), Decimal(string: "935.00"))
+        XCTAssertEqual(store.expenseCategoryTotals.map(\.category), ["groceries", "other"])
+        XCTAssertEqual(store.monthlyInvestmentCashFlow(month: "2026-07", currency: "EUR"), Decimal(string: "25.00"))
+        XCTAssertEqual(store.balanceAfterInvestments(summary), Decimal(string: "910.00"))
     }
 
     @MainActor

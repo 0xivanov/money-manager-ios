@@ -55,43 +55,13 @@ extension MoneyManagerStore {
         formAmount = transaction.amount
         formOccurredAt = DateFormat.apiDate(transaction.occurredAt) ?? Date()
         formExcludedFromBudget = transaction.excludedFromBudget ?? false
-        formPurpose = transaction.purpose ?? "spending"
-        formInvestmentScheduleID = transaction.investmentScheduleID
         activeSheet = .transactionEditor
     }
 
     func updateFormType(_ type: String) {
-        if type == TransactionType.income.rawValue {
-            setInvestmentTransfer(false)
-        }
         formType = type
         let categories = type == TransactionType.income.rawValue ? incomeCategories : expenseCategories
         formCategory = categories.first?.name ?? (type == TransactionType.income.rawValue ? "salary" : "groceries")
-    }
-
-    func setInvestmentTransfer(_ enabled: Bool) {
-        formPurpose = enabled ? "investment_transfer" : "spending"
-        formInvestmentScheduleID = enabled ? suggestedInvestmentScheduleID : nil
-        formExcludedFromBudget = enabled
-        if enabled {
-            formType = TransactionType.expense.rawValue
-            formCategory = "investment_transfer"
-        } else if formCategory == "investment_transfer" {
-            formCategory = expenseCategories.first(where: { $0.name != "investment_transfer" })?.name ?? "groceries"
-        }
-    }
-
-    var revolutXInvestmentSchedules: [InvestmentSchedule] {
-        growth.investmentSchedules.filter {
-            $0.broker.caseInsensitiveCompare("revolut_x") == .orderedSame && $0.status == "active"
-        }
-    }
-
-    private var suggestedInvestmentScheduleID: Int? {
-        let amount = MoneyFormat.inputDecimal(from: formAmount)
-        return revolutXInvestmentSchedules.first {
-            amount != nil && MoneyFormat.decimal(from: $0.amount) == amount
-        }?.id ?? revolutXInvestmentSchedules.first?.id
     }
 
     func chooseFormCategory(_ category: String) {
@@ -120,9 +90,7 @@ extension MoneyManagerStore {
                     amount: MoneyFormat.apiAmount(amount),
                     currency: self.summary?.currency ?? "EUR",
                     occurredAt: DateFormat.isoDate.string(from: self.formOccurredAt),
-                    excludedFromBudget: self.formExcludedFromBudget,
-                    purpose: self.formPurpose,
-                    investmentScheduleID: self.formInvestmentScheduleID
+                    excludedFromBudget: self.formExcludedFromBudget
                 )
                 if let editingID = self.editingID {
                     _ = try await self.api.updateTransaction(token: token, id: editingID, transaction: request)
@@ -276,9 +244,7 @@ extension MoneyManagerStore {
                         amount: transaction.amount,
                         currency: transaction.currency,
                         occurredAt: DateFormat.dateOnly(transaction.occurredAt),
-                        excludedFromBudget: transaction.excludedFromBudget ?? false,
-                        purpose: transaction.purpose ?? "spending",
-                        investmentScheduleID: transaction.investmentScheduleID
+                        excludedFromBudget: transaction.excludedFromBudget ?? false
                     )
                     let updated = try await self.api.updateTransaction(
                         token: requestedToken,
@@ -336,9 +302,7 @@ extension MoneyManagerStore {
             source: transaction.source,
             status: transaction.status,
             excludedFromBudget: transaction.excludedFromBudget,
-            scheduleOccurrenceID: transaction.scheduleOccurrenceID,
-            purpose: transaction.purpose,
-            investmentScheduleID: transaction.investmentScheduleID
+            scheduleOccurrenceID: transaction.scheduleOccurrenceID
         )
 
         do {
@@ -356,9 +320,7 @@ extension MoneyManagerStore {
                 amount: enriched.amount,
                 currency: enriched.currency,
                 occurredAt: DateFormat.dateOnly(enriched.occurredAt),
-                excludedFromBudget: enriched.excludedFromBudget ?? false,
-                purpose: enriched.purpose ?? "spending",
-                investmentScheduleID: enriched.investmentScheduleID
+                excludedFromBudget: enriched.excludedFromBudget ?? false
             )
             let updated = try await api.updateTransaction(
                 token: token,
@@ -415,7 +377,6 @@ extension MoneyManagerStore {
     ) -> Bool {
         guard transaction.category.caseInsensitiveCompare("other") == .orderedSame,
             transaction.source == "import" || transaction.source == "open_banking",
-            !transaction.isInvestmentRelated,
             !dismissedTransactionIDs.contains(transaction.id)
         else { return false }
 
@@ -469,8 +430,6 @@ extension MoneyManagerStore {
         formAmount = ""
         formOccurredAt = Date()
         formExcludedFromBudget = false
-        formPurpose = "spending"
-        formInvestmentScheduleID = nil
         newCategoryName = ""
     }
 

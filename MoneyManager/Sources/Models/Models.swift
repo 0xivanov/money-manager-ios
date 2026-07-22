@@ -29,8 +29,6 @@ struct Transaction: Codable, Identifiable, Equatable {
     let status: String?
     let excludedFromBudget: Bool?
     let scheduleOccurrenceID: Int?
-    let purpose: String?
-    let investmentScheduleID: Int?
 
     init(
         id: Int,
@@ -43,9 +41,7 @@ struct Transaction: Codable, Identifiable, Equatable {
         source: String? = nil,
         status: String? = nil,
         excludedFromBudget: Bool? = nil,
-        scheduleOccurrenceID: Int? = nil,
-        purpose: String? = nil,
-        investmentScheduleID: Int? = nil
+        scheduleOccurrenceID: Int? = nil
     ) {
         self.id = id
         self.type = type
@@ -58,8 +54,6 @@ struct Transaction: Codable, Identifiable, Equatable {
         self.status = status
         self.excludedFromBudget = excludedFromBudget
         self.scheduleOccurrenceID = scheduleOccurrenceID
-        self.purpose = purpose
-        self.investmentScheduleID = investmentScheduleID
     }
 
     enum CodingKeys: String, CodingKey {
@@ -74,28 +68,6 @@ struct Transaction: Codable, Identifiable, Equatable {
         case status
         case excludedFromBudget = "excluded_from_budget"
         case scheduleOccurrenceID = "schedule_occurrence_id"
-        case purpose
-        case investmentScheduleID = "investment_schedule_id"
-    }
-}
-
-extension Transaction {
-    /// Imported investment transfers are not always tagged by older server data.
-    /// Recognising the broker description locally keeps them out of spending
-    /// analysis and clarification prompts without rewriting the user's record.
-    var isInvestmentRelated: Bool {
-        if investmentScheduleID != nil { return true }
-
-        let normalizedPurpose = purpose?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if normalizedPurpose == "investment" || normalizedPurpose == "investment_transfer" {
-            return true
-        }
-
-        let normalizedDescription = description?.folding(
-            options: [.caseInsensitive, .diacriticInsensitive],
-            locale: .current
-        ).lowercased() ?? ""
-        return normalizedDescription.contains("revolut x")
     }
 }
 
@@ -107,8 +79,6 @@ struct TransactionRequest: Codable, Equatable {
     let currency: String
     let occurredAt: String
     let excludedFromBudget: Bool
-    let purpose: String
-    let investmentScheduleID: Int?
 
     init(
         type: String,
@@ -117,9 +87,7 @@ struct TransactionRequest: Codable, Equatable {
         amount: String,
         currency: String = "EUR",
         occurredAt: String,
-        excludedFromBudget: Bool = false,
-        purpose: String = "spending",
-        investmentScheduleID: Int? = nil
+        excludedFromBudget: Bool = false
     ) {
         self.type = type
         self.category = category
@@ -128,8 +96,6 @@ struct TransactionRequest: Codable, Equatable {
         self.currency = currency
         self.occurredAt = occurredAt
         self.excludedFromBudget = excludedFromBudget
-        self.purpose = purpose
-        self.investmentScheduleID = investmentScheduleID
     }
 
     enum CodingKeys: String, CodingKey {
@@ -140,8 +106,6 @@ struct TransactionRequest: Codable, Equatable {
         case currency
         case occurredAt = "occurred_at"
         case excludedFromBudget = "excluded_from_budget"
-        case purpose
-        case investmentScheduleID = "investment_schedule_id"
     }
 }
 
