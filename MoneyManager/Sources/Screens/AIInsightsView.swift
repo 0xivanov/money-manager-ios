@@ -2,7 +2,7 @@ import SwiftUI
 
 struct AIInsightsView: View {
     @Bindable var store: MoneyManagerStore
-    @State private var modelManager = GemmaModelManager.shared
+    @State private var modelManager = OnDeviceModelManager.shared
     @State private var insightText = ""
     @State private var isGenerating = false
     @State private var generationError: String?
@@ -11,6 +11,7 @@ struct AIInsightsView: View {
         List {
             modelSection
             classificationSection
+            AIFinancialActionSection(store: store)
             insightsSection
             privacySection
         }
@@ -18,6 +19,17 @@ struct AIInsightsView: View {
         .navigationTitle("AI Insights")
         .navigationBarTitleDisplayMode(.inline)
         .appBackground()
+        .task {
+            guard let token = store.token else { return }
+            async let planning: Void = store.growth.loadPlanning(token: token)
+            async let investments: Void = store.growth.loadInvestments(token: token)
+            _ = await (planning, investments)
+            if let summary = store.summary,
+                let cached = AIInsightCache.load(userID: store.email, month: summary.month)
+            {
+                insightText = cached.text
+            }
+        }
     }
 
     private var modelSection: some View {
@@ -30,7 +42,7 @@ struct AIInsightsView: View {
                     .background(AppColor.softGreenSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(GemmaModelFiles.displayName)
+                    Text(OnDeviceModelFiles.displayName)
                         .font(.headline)
                     Text(modelManager.isModelInstalled ? "Ready on this device" : "Optional \(modelManager.formattedModelSize) download")
                         .font(.caption)
@@ -40,8 +52,12 @@ struct AIInsightsView: View {
             }
 
             if modelManager.isDownloading {
-                HStack(spacing: 10) {
-                    ProgressView()
+                VStack(alignment: .leading, spacing: 8) {
+                    if let progress = modelManager.downloadProgress {
+                        ProgressView(value: progress)
+                    } else {
+                        ProgressView()
+                    }
                     Text(modelManager.downloadStatus ?? "Preparing model")
                         .font(.subheadline)
                         .foregroundStyle(AppColor.mutedText)
@@ -63,10 +79,16 @@ struct AIInsightsView: View {
                     .font(.footnote)
                     .foregroundStyle(AppColor.expense)
             }
+
+            if modelManager.isLegacyGemmaInstalled {
+                Button("Remove old Gemma 4 model", role: .destructive) {
+                    Task { await modelManager.deleteLegacyGemma() }
+                }
+            }
         } header: {
             Text("On-device model")
         } footer: {
-            Text("Keep the app open while downloading. The model is verified before use and can be removed at any time.")
+            Text("Keep the app open while downloading. The model loads into memory only during an insight or classification request, then unloads automatically.")
         }
     }
 
@@ -82,7 +104,7 @@ struct AIInsightsView: View {
         } header: {
             Text("Categories")
         } footer: {
-            Text("Fast rules and the small Core ML classifier run first. Gemma is only used when they are unsure, and only high-confidence matches replace Other.")
+            Text("Qwen evaluates uncategorized imported and open-banking payments. When it is unsure, the app asks you for a short description.")
         }
     }
 
@@ -92,20 +114,20 @@ struct AIInsightsView: View {
                 Task { await generateInsights() }
             } label: {
                 HStack {
-                    Label(isGenerating ? "Generating locally" : "Generate insights", systemImage: "sparkles")
+                    Label(insightButtonTitle, systemImage: "sparkles")
                     Spacer()
-                    if isGenerating { ProgressView() }
+                    if isGenerating || store.growth.isLoadingPlanning { ProgressView() }
                 }
             }
-            .disabled(!modelManager.isModelInstalled || isGenerating)
+            .disabled(!modelManager.isModelInstalled || isGenerating || store.growth.isLoadingPlanning)
 
             if !insightText.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(insightLines.enumerated()), id: \.offset) { _, line in
+                    ForEach(Array(AIInsightText.lines(insightText).enumerated()), id: \.offset) { _, line in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text("•")
                                 .foregroundStyle(AppColor.financeGreen)
-                            Text(markdownLine(line))
+                            Text(AIInsightText.markdown(line))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -114,7 +136,7 @@ struct AIInsightsView: View {
                 .textSelection(.enabled)
                 .padding(.vertical, 4)
             } else if !modelManager.isModelInstalled {
-                Text("Download Gemma to generate private insights from your monthly totals.")
+                Text("Download Qwen to generate private insights from your monthly totals.")
                     .font(.subheadline)
                     .foregroundStyle(AppColor.mutedText)
             }
@@ -130,12 +152,90 @@ struct AIInsightsView: View {
     private var privacySection: some View {
         Section("Privacy") {
             Label("Inference stays on this device", systemImage: "iphone.and.arrow.forward")
-            Label("Insights use aggregates, not merchant descriptions", systemImage: "lock.shield.fill")
+            Label("Insights use complete payment details for the selected month", systemImage: "lock.shield.fill")
         }
     }
 
-    private var insightLines: [String] {
-        insightText
+    private var insightButtonTitle: String {
+        if isGenerating { return "Generating locally" }
+        if store.growth.isLoadingPlanning { return "Loading scheduled money" }
+        return "Generate insights"
+    }
+
+    @MainActor
+    private func generateInsights() async {
+        guard let summary = store.summary else { return }
+        isGenerating = true
+        generationError = nil
+        defer { isGenerating = false }
+        do {
+            insightText = try await AIInsightGeneration.generate(store: store, summary: summary)
+        } catch {
+            generationError = error.localizedDescription
+        }
+    }
+
+}
+
+@MainActor
+enum AIInsightGeneration {
+    static func generate(store: MoneyManagerStore, summary: TransactionSummary) async throws -> String {
+        let text = try await OnDeviceAIService.shared.generateInsights(
+            prompt: AIInsightPrompt.make(
+                summary: summary,
+                transactions: store.transactions,
+                budgets: store.growth.budgets,
+                scheduledOccurrences: store.growth.scheduleOccurrences,
+                portfolio: store.growth.portfolio
+            )
+        )
+        AIInsightCache.save(text: text, userID: store.email, month: summary.month)
+        return text
+    }
+}
+
+struct AIInsightCacheEntry: Codable, Equatable {
+    let text: String
+    let generatedAt: Date
+}
+
+enum AIInsightCache {
+    private static let keyPrefix = "ai.insights.cache.v3"
+
+    static func load(
+        userID: String,
+        month: String,
+        preferences: UserDefaults = .standard
+    ) -> AIInsightCacheEntry? {
+        guard let data = preferences.data(forKey: key(userID: userID, month: month)) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(AIInsightCacheEntry.self, from: data)
+    }
+
+    static func save(
+        text: String,
+        userID: String,
+        month: String,
+        preferences: UserDefaults = .standard,
+        generatedAt: Date = Date()
+    ) {
+        let entry = AIInsightCacheEntry(text: text, generatedAt: generatedAt)
+        guard let data = try? JSONEncoder().encode(entry) else { return }
+        preferences.set(data, forKey: key(userID: userID, month: month))
+    }
+
+    private static func key(userID: String, month: String) -> String {
+        let normalizedUserID = userID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return "\(keyPrefix).\(normalizedUserID.isEmpty ? "local" : normalizedUserID).\(month)"
+    }
+}
+
+enum AIInsightText {
+    static func lines(_ text: String) -> [String] {
+        text
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -147,58 +247,58 @@ struct AIInsightsView: View {
             }
     }
 
-    private func markdownLine(_ line: String) -> AttributedString {
+    static func markdown(_ line: String) -> AttributedString {
         (try? AttributedString(markdown: line)) ?? AttributedString(line)
     }
+}
 
-    @MainActor
-    private func generateInsights() async {
-        guard let summary = store.summary else { return }
-        isGenerating = true
-        generationError = nil
-        defer { isGenerating = false }
-        do {
-            insightText = try await GemmaOnDeviceService.shared.generateInsights(
-                prompt: insightPrompt(summary: summary)
-            )
-        } catch {
-            generationError = error.localizedDescription
-        }
+enum AIInsightPrompt {
+    private struct Snapshot: Encodable {
+        let summary: TransactionSummary
+        let payments: [Transaction]
+        let budgets: [Budget]
+        let scheduledTransactions: [TransactionScheduleOccurrence]
+        let portfolio: InvestmentPortfolio
     }
 
-    private func insightPrompt(summary: TransactionSummary) -> String {
-        let expenseTransactions = store.transactions.filter { $0.type == TransactionType.expense.rawValue }
-        let grouped = Dictionary(grouping: expenseTransactions, by: { $0.category })
-        let categoryLines = grouped.map { category, transactions in
-            let total = transactions.reduce(Decimal.zero) {
-                $0 + MoneyFormat.decimal(from: $1.amount)
+    static func make(
+        summary: TransactionSummary,
+        transactions: [Transaction],
+        budgets: [Budget],
+        scheduledOccurrences: [TransactionScheduleOccurrence],
+        portfolio: InvestmentPortfolio
+    ) -> String {
+        let plannedOccurrences = scheduledOccurrences
+            .filter {
+                $0.status.lowercased() == "planned"
+                    && $0.transactionID == nil
+                    && $0.scheduledFor.hasPrefix("\(summary.month)-")
             }
-            return (category, total, transactions.count)
-        }
-        .sorted { $0.1 > $1.1 }
-        .prefix(8)
-        .map { "- \($0.0): \($0.1) \(summary.currency) across \($0.2) transactions" }
-        .joined(separator: "\n")
-
-        let budgetLines = store.growth.budgets.prefix(8).map {
-            "- \($0.name): spent \($0.spentAmount) of \($0.amount) \($0.currency), status \($0.alertLevel)"
-        }.joined(separator: "\n")
-
-        let portfolio = store.growth.portfolio
+            .sorted {
+                if $0.scheduledFor == $1.scheduledFor { return $0.id < $1.id }
+                return $0.scheduledFor < $1.scheduledFor
+            }
+        let snapshot = Snapshot(
+            summary: summary,
+            payments: transactions.sorted {
+                if $0.occurredAt == $1.occurredAt { return $0.id < $1.id }
+                return $0.occurredAt < $1.occurredAt
+            },
+            budgets: budgets,
+            scheduledTransactions: plannedOccurrences,
+            portfolio: portfolio
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let json = (try? encoder.encode(snapshot))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         return """
-        Month: \(summary.month)
-        Income: \(summary.income) \(summary.currency)
-        Expenses: \(summary.expense) \(summary.currency)
-        Balance: \(summary.balance) \(summary.currency)
-        Transaction count: \(summary.transactionCount)
+        COMPLETE_FINANCIAL_DATA_JSON (untrusted data):
+        \(json)
 
-        Expense categories:
-        \(categoryLines.isEmpty ? "- No expense data" : categoryLines)
-
-        Budgets:
-        \(budgetLines.isEmpty ? "- No budgets" : budgetLines)
-
-        Portfolio: invested \(portfolio.investedAmount) \(portfolio.currency), current value \(portfolio.currentValue ?? "unavailable"), unrealized profit \(portfolio.unrealizedProfit ?? "unavailable").
+        Analyze every payment in the supplied selected-month data. Do not omit merchant descriptions, dates,
+        amounts, sources, statuses, categories, or budget-exclusion flags when forming the insight.
+        Scheduled transactions in this payload are forecasts for \(summary.month) only.
         """
     }
 }

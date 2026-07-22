@@ -31,6 +31,7 @@ final class MoneyManagerStore {
     @ObservationIgnored private let preferences: UserDefaults
     @ObservationIgnored var refreshTask: Task<Void, Never>?
     @ObservationIgnored var categoryClassificationTask: Task<Void, Never>?
+    @ObservationIgnored var dismissedClarificationTransactionIDs: Set<Int> = []
     @ObservationIgnored var refreshGeneration = 0
     @ObservationIgnored var sessionGeneration = 0
     @ObservationIgnored var openBankingReloadRequested = false
@@ -76,6 +77,9 @@ final class MoneyManagerStore {
     var formDescription = ""
     var formAmount = ""
     var formOccurredAt = Date()
+    var formExcludedFromBudget = false
+    var formPurpose = "spending"
+    var formInvestmentScheduleID: Int?
     var expenseCategories: [Category] = []
     var incomeCategories: [Category] = []
     var newCategoryName = ""
@@ -84,6 +88,9 @@ final class MoneyManagerStore {
     var exportShareItem: ExportShareItem?
     var importResultMessage: String?
     var isImporting = false
+    var activeTransactionClarification: TransactionClarification?
+    var queuedTransactionClarifications: [TransactionClarification] = []
+    var isSavingTransactionClarification = false
     var growth: GrowthStore
     var hidePortfolioBalances: Bool {
         didSet {
@@ -106,6 +113,10 @@ final class MoneyManagerStore {
         self.preferences = preferences
         self.token = tokenStore.getToken()
         self.growth = GrowthStore(api: api)
+        self.dismissedClarificationTransactionIDs = Set(
+            preferences.array(forKey: PreferenceKey.dismissedTransactionClarificationIDs)?
+                .compactMap { ($0 as? NSNumber)?.intValue } ?? []
+        )
         self.hidePortfolioBalances = preferences.object(
             forKey: PreferenceKey.hidePortfolioBalances
         ) as? Bool ?? true
@@ -117,6 +128,14 @@ final class MoneyManagerStore {
         token != nil
     }
 
+    func rememberDismissedTransactionClarification(id: Int) {
+        dismissedClarificationTransactionIDs.insert(id)
+        preferences.set(
+            Array(dismissedClarificationTransactionIDs.sorted().suffix(500)),
+            forKey: PreferenceKey.dismissedTransactionClarificationIDs
+        )
+    }
+
     var apiBaseURL: URL {
         api.baseURL
     }
@@ -125,4 +144,5 @@ final class MoneyManagerStore {
 private enum PreferenceKey {
     static let hidePortfolioBalances = "privacy.hidePortfolioBalances"
     static let appAppearance = "appearance"
+    static let dismissedTransactionClarificationIDs = "ai.transactionClarification.dismissedIDs"
 }

@@ -9,7 +9,10 @@ extension MoneyManagerStore {
 
     var expenseCategoryTotals: [CategoryTotal] {
         transactions
-            .filter { $0.type == TransactionType.expense.rawValue }
+            .filter {
+                $0.type == TransactionType.expense.rawValue
+                    && ($0.purpose ?? "spending") == "spending"
+            }
             .reduce(into: [String: Decimal]()) { totals, transaction in
                 totals[transaction.category, default: .zero] += MoneyFormat.decimal(from: transaction.amount)
             }
@@ -19,7 +22,8 @@ extension MoneyManagerStore {
     }
 
     func monthlyInvestmentCashFlow(month: String, currency: String) -> Decimal {
-        growth.investmentTrades
+        var matchedTransferIDs = Set<Int>()
+        return growth.investmentTrades
             .filter {
                 $0.currency.caseInsensitiveCompare(currency) == .orderedSame
                     && String($0.occurredAt.prefix(7)) == month
@@ -30,6 +34,13 @@ extension MoneyManagerStore {
 
                 switch trade.side.lowercased() {
                 case "buy":
+                    if let transfer = matchingInvestmentTransfer(
+                        for: trade,
+                        excluding: matchedTransferIDs
+                    ) {
+                        matchedTransferIDs.insert(transfer.id)
+                        return total
+                    }
                     return total + amount + fees
                 case "sell":
                     return total - amount + fees
@@ -37,6 +48,34 @@ extension MoneyManagerStore {
                     return total
                 }
             }
+    }
+
+    private func matchingInvestmentTransfer(
+        for trade: InvestmentTrade,
+        excluding matchedIDs: Set<Int>
+    ) -> Transaction? {
+        guard trade.broker.caseInsensitiveCompare("revolut_x") == .orderedSame,
+            let tradeDate = DateFormat.apiDate(trade.occurredAt)
+        else { return nil }
+
+        let tradeAmount = MoneyFormat.decimal(from: trade.amount)
+        let tradeWithFees = tradeAmount + MoneyFormat.decimal(from: trade.fees)
+        return transactions.first { transaction in
+            guard !matchedIDs.contains(transaction.id),
+                transaction.type == TransactionType.expense.rawValue,
+                (transaction.purpose ?? "spending") == "investment_transfer",
+                transaction.currency.caseInsensitiveCompare(trade.currency) == .orderedSame,
+                let transferDate = DateFormat.apiDate(transaction.occurredAt),
+                abs(transferDate.timeIntervalSince(tradeDate)) <= 3 * 24 * 60 * 60
+            else { return false }
+
+            let transferAmount = MoneyFormat.decimal(from: transaction.amount)
+            guard transferAmount == tradeAmount || transferAmount == tradeWithFees else { return false }
+            guard let scheduleID = transaction.investmentScheduleID else { return true }
+            guard let schedule = growth.investmentSchedules.first(where: { $0.id == scheduleID }) else { return false }
+            return schedule.broker.caseInsensitiveCompare(trade.broker) == .orderedSame
+                && schedule.symbol.caseInsensitiveCompare(trade.symbol) == .orderedSame
+        }
     }
 
     func balanceAfterInvestments(_ summary: TransactionSummary) -> Decimal {
@@ -73,7 +112,10 @@ extension MoneyManagerStore {
     }
 
     var hasTransactionDraft: Bool {
-        editingID != nil || !formAmount.isEmpty || !formDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        editingID != nil
+            || formPurpose != "spending"
+            || !formAmount.isEmpty
+            || !formDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func makeDayBuckets(from source: [Transaction]) -> [DayBucket] {

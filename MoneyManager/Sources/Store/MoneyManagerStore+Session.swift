@@ -125,6 +125,9 @@ extension MoneyManagerStore {
         month = DateFormat.currentMonthKey()
         summary = nil
         transactions = []
+        activeTransactionClarification = nil
+        queuedTransactionClarifications = []
+        isSavingTransactionClarification = false
         selectedExpenseCategory = nil
         filterType = nil
         filterCategory = nil

@@ -43,11 +43,12 @@
 		001001000000000000000035 /* OpenBankingConnectFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000035 /* OpenBankingConnectFlowView.swift */; };
 		001001000000000000000036 /* OpenBankingAccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000036 /* OpenBankingAccountDetailView.swift */; };
 		001001000000000000000037 /* OpenBankingComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000037 /* OpenBankingComponents.swift */; };
-		001001000000000000000038 /* OnDeviceTransactionClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000038 /* OnDeviceTransactionClassifier.swift */; };
-		001001000000000000000039 /* TransactionCategoryClassifier.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000039 /* TransactionCategoryClassifier.mlmodel */; };
-		001001000000000000000040 /* GemmaOnDeviceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000040 /* GemmaOnDeviceService.swift */; };
+		001001000000000000000038 /* AIActionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000038 /* AIActionsView.swift */; };
+		001001000000000000000040 /* OnDeviceAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000040 /* OnDeviceAIService.swift */; };
 		001001000000000000000041 /* AIInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002001000000000000000041 /* AIInsightsView.swift */; };
-		001001000000000000000042 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = 015000000000000000000002 /* LiteRTLM */; };
+		001001000000000000000043 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 015000000000000000000003 /* MLXLLM */; };
+		001001000000000000000044 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 015000000000000000000004 /* MLXLMCommon */; };
+		001001000000000000000045 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 015000000000000000000005 /* MLX */; };
 		001002000000000000000001 /* MoneyManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002002000000000000000001 /* MoneyManagerTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -98,9 +99,8 @@
 		002001000000000000000035 /* OpenBankingConnectFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBankingConnectFlowView.swift; sourceTree = "<group>"; };
 		002001000000000000000036 /* OpenBankingAccountDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBankingAccountDetailView.swift; sourceTree = "<group>"; };
 		002001000000000000000037 /* OpenBankingComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBankingComponents.swift; sourceTree = "<group>"; };
-		002001000000000000000038 /* OnDeviceTransactionClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceTransactionClassifier.swift; sourceTree = "<group>"; };
-		002001000000000000000039 /* TransactionCategoryClassifier.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = TransactionCategoryClassifier.mlmodel; sourceTree = "<group>"; };
-		002001000000000000000040 /* GemmaOnDeviceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaOnDeviceService.swift; sourceTree = "<group>"; };
+		002001000000000000000038 /* AIActionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIActionsView.swift; sourceTree = "<group>"; };
+		002001000000000000000040 /* OnDeviceAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnDeviceAIService.swift; sourceTree = "<group>"; };
 		002001000000000000000041 /* AIInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIInsightsView.swift; sourceTree = "<group>"; };
 		002002000000000000000001 /* MoneyManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoneyManagerTests.swift; sourceTree = "<group>"; };
 		006000000000000000000001 /* MoneyManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MoneyManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -112,7 +112,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				001001000000000000000042 /* LiteRTLM in Frameworks */,
+				001001000000000000000043 /* MLXLLM in Frameworks */,
+				001001000000000000000044 /* MLXLMCommon in Frameworks */,
+				001001000000000000000045 /* MLX in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -186,8 +188,7 @@
 				002001000000000000000005 /* MoneyManagerAPI.swift */,
 				002001000000000000000021 /* GrowthAPI.swift */,
 				002001000000000000000006 /* TokenStore.swift */,
-				002001000000000000000038 /* OnDeviceTransactionClassifier.swift */,
-				002001000000000000000040 /* GemmaOnDeviceService.swift */,
+				002001000000000000000040 /* OnDeviceAIService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -224,6 +225,7 @@
 				002001000000000000000023 /* PlanningViews.swift */,
 				002001000000000000000024 /* InvestmentsView.swift */,
 				002001000000000000000041 /* AIInsightsView.swift */,
+				002001000000000000000038 /* AIActionsView.swift */,
 			);
 			path = Screens;
 			sourceTree = "<group>";
@@ -257,7 +259,6 @@
 			isa = PBXGroup;
 			children = (
 				002001000000000000000017 /* Assets.xcassets */,
-				002001000000000000000039 /* TransactionCategoryClassifier.mlmodel */,
 			);
 			path = MoneyManager/Resources;
 			sourceTree = "<group>";
@@ -288,7 +289,9 @@
 			);
 			name = MoneyManager;
 			packageProductDependencies = (
-				015000000000000000000002 /* LiteRTLM */,
+				015000000000000000000003 /* MLXLLM */,
+				015000000000000000000004 /* MLXLMCommon */,
+				015000000000000000000005 /* MLX */,
 			);
 			productName = MoneyManager;
 			productReference = 006000000000000000000001 /* MoneyManager.app */;
@@ -341,7 +344,8 @@
 			);
 			mainGroup = 008000000000000000000001;
 			packageReferences = (
-				015000000000000000000001 /* XCLocalSwiftPackageReference "LiteRTLM" */,
+				015000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				015000000000000000000002 /* XCRemoteSwiftPackageReference "mlx-swift" */,
 			);
 			productRefGroup = 008000000000000000000020 /* Products */;
 			projectDirPath = "";
@@ -398,10 +402,9 @@
 				001001000000000000000014 /* Formatters.swift in Sources */,
 				001001000000000000000015 /* ShareSheet.swift in Sources */,
 				001001000000000000000016 /* AppConfiguration.swift in Sources */,
-				001001000000000000000038 /* OnDeviceTransactionClassifier.swift in Sources */,
-				001001000000000000000040 /* GemmaOnDeviceService.swift in Sources */,
+				001001000000000000000038 /* AIActionsView.swift in Sources */,
+				001001000000000000000040 /* OnDeviceAIService.swift in Sources */,
 				001001000000000000000041 /* AIInsightsView.swift in Sources */,
-				001001000000000000000039 /* TransactionCategoryClassifier.mlmodel in Sources */,
 				001001000000000000000018 /* OpenBankingView.swift in Sources */,
 				001001000000000000000033 /* OpenBankingPreview.swift in Sources */,
 				001001000000000000000034 /* OpenBankingConnectionViews.swift in Sources */,
@@ -436,18 +439,40 @@
 		};
 /* End PBXTargetDependency section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		015000000000000000000001 /* XCLocalSwiftPackageReference "LiteRTLM" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Vendor/LiteRTLM;
+/* Begin XCRemoteSwiftPackageReference section */
+		015000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = exactVersion;
+				version = 2.31.3;
+			};
 		};
-/* End XCLocalSwiftPackageReference section */
+		015000000000000000000002 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 0.31.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		015000000000000000000002 /* LiteRTLM */ = {
+		015000000000000000000003 /* MLXLLM */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 015000000000000000000001 /* XCLocalSwiftPackageReference "LiteRTLM" */;
-			productName = LiteRTLM;
+			package = 015000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		015000000000000000000004 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 015000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		015000000000000000000005 /* MLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 015000000000000000000002 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLX;
 		};
 /* End XCSwiftPackageProductDependency section */
 

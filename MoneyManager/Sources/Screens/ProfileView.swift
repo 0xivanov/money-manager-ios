@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct ProfileView: View {
     @Bindable var store: MoneyManagerStore
+    @State private var modelManager = OnDeviceModelManager.shared
     @State private var isDeleteAccountConfirmationPresented = false
     @State private var isImportPickerPresented = false
 
@@ -11,6 +12,24 @@ struct ProfileView: View {
             List {
                 Section("Account") {
                     AccountRow(store: store)
+                }
+
+                Section("On-device AI") {
+                    NavigationLink {
+                        AIInsightsView(store: store)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("AI Insights")
+                                Text(modelManager.isModelInstalled ? "Qwen 3 1.7B is ready" : "Download Qwen 3 1.7B")
+                                    .font(.caption)
+                                    .foregroundStyle(AppColor.mutedText)
+                            }
+                        } icon: {
+                            Image(systemName: modelManager.isModelInstalled ? "checkmark.seal.fill" : "sparkles")
+                                .foregroundStyle(AppColor.financeGreen)
+                        }
+                    }
                 }
 
                 Section("Connection") {

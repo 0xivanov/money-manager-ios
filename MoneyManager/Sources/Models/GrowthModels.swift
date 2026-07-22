@@ -185,6 +185,8 @@ struct InvestmentTrade: Codable, Identifiable, Equatable {
     let assetType: String
     let symbol: String
     let assetName: String
+    let exchange: String?
+    let marketCurrency: String?
     let broker: String
     let side: String
     let amount: String
@@ -201,6 +203,8 @@ struct InvestmentTrade: Codable, Identifiable, Equatable {
         case id, symbol, broker, side, amount, quantity, fees, currency, notes
         case assetType = "asset_type"
         case assetName = "asset_name"
+        case exchange
+        case marketCurrency = "market_currency"
         case pricePerUnit = "price_per_unit"
         case occurredAt = "occurred_at"
         case priceProvider = "price_provider"
@@ -212,6 +216,8 @@ struct InvestmentTradeRequest: Codable, Equatable {
     let assetType: String
     let symbol: String
     let assetName: String
+    let exchange: String
+    let marketCurrency: String
     let broker: String
     let side: String
     let amount: String
@@ -224,6 +230,8 @@ struct InvestmentTradeRequest: Codable, Equatable {
         case symbol, broker, side, amount, fees, currency, notes
         case assetType = "asset_type"
         case assetName = "asset_name"
+        case exchange
+        case marketCurrency = "market_currency"
         case occurredAt = "occurred_at"
     }
 }
@@ -237,6 +245,8 @@ struct InvestmentAssetDefinition: Identifiable, Equatable, Hashable {
     let type: InvestmentAssetType
     let symbol: String
     let name: String
+    let exchange: String
+    let marketCurrency: String
     let isTradeEnabled: Bool
 
     var id: String { "\(type.rawValue):\(symbol)" }
@@ -247,31 +257,102 @@ enum InvestmentAssetCatalog {
         type: .crypto,
         symbol: "BTC",
         name: "Bitcoin",
+        exchange: "",
+        marketCurrency: "EUR",
         isTradeEnabled: true
     )
     static let ethereum = InvestmentAssetDefinition(
         type: .crypto,
         symbol: "ETH",
         name: "Ethereum",
+        exchange: "",
+        marketCurrency: "EUR",
         isTradeEnabled: true
     )
 
-    // Stock definitions stay in the catalog so adding a market-data provider
-    // later does not require another editor or portfolio-model redesign.
     static let apple = InvestmentAssetDefinition(
         type: .stock,
         symbol: "AAPL",
         name: "Apple",
-        isTradeEnabled: false
+        exchange: "NASDAQ",
+        marketCurrency: "USD",
+        isTradeEnabled: true
     )
     static let microsoft = InvestmentAssetDefinition(
         type: .stock,
         symbol: "MSFT",
         name: "Microsoft",
-        isTradeEnabled: false
+        exchange: "NASDAQ",
+        marketCurrency: "USD",
+        isTradeEnabled: true
     )
 
-    static let all = [bitcoin, ethereum, apple, microsoft]
+    static let strategy = InvestmentAssetDefinition(
+        type: .stock,
+        symbol: "MSTR",
+        name: "Strategy",
+        exchange: "NASDAQ",
+        marketCurrency: "USD",
+        isTradeEnabled: true
+    )
+
+    static let vanguardAllWorld = InvestmentAssetDefinition(
+        type: .stock,
+        symbol: "VWCE",
+        name: "Vanguard FTSE All-World ETF",
+        exchange: "XETRA",
+        marketCurrency: "EUR",
+        isTradeEnabled: true
+    )
+
+    static let iSharesSP500 = InvestmentAssetDefinition(
+        type: .stock,
+        symbol: "SXR8",
+        name: "iShares Core S&P 500 ETF",
+        exchange: "XETRA",
+        marketCurrency: "EUR",
+        isTradeEnabled: true
+    )
+
+    static let iSharesSP500InformationTechnology = InvestmentAssetDefinition(
+        type: .stock,
+        symbol: "QDVE",
+        name: "iShares S&P 500 Information Technology Sector ETF",
+        exchange: "XETRA",
+        marketCurrency: "EUR",
+        isTradeEnabled: true
+    )
+
+    static let vanguardAllWorldHighDividend = InvestmentAssetDefinition(
+        type: .stock,
+        symbol: "VGWE",
+        name: "Vanguard FTSE All-World High Dividend Yield ETF",
+        exchange: "XETRA",
+        marketCurrency: "EUR",
+        isTradeEnabled: true
+    )
+
+    static let xetraGold = InvestmentAssetDefinition(
+        type: .stock,
+        symbol: "4GLD",
+        name: "Xetra-Gold ETC",
+        exchange: "XETRA",
+        marketCurrency: "EUR",
+        isTradeEnabled: true
+    )
+
+    static let all = [
+        bitcoin,
+        ethereum,
+        apple,
+        microsoft,
+        strategy,
+        vanguardAllWorld,
+        iSharesSP500,
+        iSharesSP500InformationTechnology,
+        vanguardAllWorldHighDividend,
+        xetraGold,
+    ]
     static let tradeEnabled = all.filter(\.isTradeEnabled)
 
     static func hasAutomaticPricing(assetType: String, symbol: String) -> Bool {
@@ -285,6 +366,8 @@ struct InvestmentPosition: Codable, Identifiable, Equatable {
     let assetType: String
     let symbol: String
     let assetName: String
+    let exchange: String?
+    let marketCurrency: String?
     let broker: String
     let quantity: String
     let averageCost: String
@@ -298,12 +381,14 @@ struct InvestmentPosition: Codable, Identifiable, Equatable {
     let priceAsOf: String?
     let priceStatus: String
 
-    var id: String { "\(assetType):\(symbol):\(broker)" }
+    var id: String { "\(assetType):\(symbol):\(exchange ?? ""):\(broker)" }
 
     enum CodingKeys: String, CodingKey {
         case symbol, broker, quantity, currency
         case assetType = "asset_type"
         case assetName = "asset_name"
+        case exchange
+        case marketCurrency = "market_currency"
         case averageCost = "average_cost"
         case investedAmount = "invested_amount"
         case currentPrice = "current_price"
@@ -344,14 +429,52 @@ struct InvestmentPortfolioHistoryPoint: Codable, Identifiable, Equatable {
     let asOf: String
     let value: String
     let investedAmount: String
+    let holdings: [InvestmentPortfolioHistoryHolding]
 
     var id: String { asOf }
     var date: Date? { DateFormat.apiDateTime(asOf) }
 
+    init(
+        asOf: String,
+        value: String,
+        investedAmount: String,
+        holdings: [InvestmentPortfolioHistoryHolding] = []
+    ) {
+        self.asOf = asOf
+        self.value = value
+        self.investedAmount = investedAmount
+        self.holdings = holdings
+    }
+
     enum CodingKeys: String, CodingKey {
-        case value
+        case value, holdings
         case asOf = "as_of"
         case investedAmount = "invested_amount"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        asOf = try container.decode(String.self, forKey: .asOf)
+        value = try container.decode(String.self, forKey: .value)
+        investedAmount = try container.decode(String.self, forKey: .investedAmount)
+        holdings = try container.decodeIfPresent([InvestmentPortfolioHistoryHolding].self, forKey: .holdings) ?? []
+    }
+}
+
+struct InvestmentPortfolioHistoryHolding: Codable, Identifiable, Equatable {
+    let assetType: String
+    let symbol: String
+    let assetName: String
+    let exchange: String?
+    let value: String
+
+    var id: String { [assetType, symbol, exchange ?? ""].joined(separator: "|") }
+
+    enum CodingKeys: String, CodingKey {
+        case symbol, value
+        case assetType = "asset_type"
+        case assetName = "asset_name"
+        case exchange
     }
 }
 
@@ -359,8 +482,29 @@ struct InvestmentPortfolioChartPoint: Identifiable, Equatable {
     let date: Date
     let value: Double
     let investedAmount: Double
+    let holdings: [InvestmentHoldingChartValue]
 
     var id: Date { date }
+}
+
+struct InvestmentHoldingChartValue: Identifiable, Equatable {
+    let id: String
+    let assetType: String
+    let symbol: String
+    let assetName: String
+    let exchange: String?
+    let value: Double
+}
+
+struct InvestmentHoldingStackPoint: Identifiable, Equatable {
+    let date: Date
+    let holdingID: String
+    let symbol: String
+    let value: Double
+    let lowerBound: Double
+    let upperBound: Double
+
+    var id: String { "\(date.timeIntervalSinceReferenceDate)|\(holdingID)" }
 }
 
 func investmentPortfolioChartPoints(
@@ -371,10 +515,63 @@ func investmentPortfolioChartPoints(
         return InvestmentPortfolioChartPoint(
             date: date,
             value: Double(truncating: MoneyFormat.decimal(from: point.value) as NSDecimalNumber),
-            investedAmount: Double(truncating: MoneyFormat.decimal(from: point.investedAmount) as NSDecimalNumber)
+            investedAmount: Double(truncating: MoneyFormat.decimal(from: point.investedAmount) as NSDecimalNumber),
+            holdings: point.holdings.map { holding in
+                InvestmentHoldingChartValue(
+                    id: holding.id,
+                    assetType: holding.assetType,
+                    symbol: holding.symbol,
+                    assetName: holding.assetName,
+                    exchange: holding.exchange,
+                    value: Double(truncating: MoneyFormat.decimal(from: holding.value) as NSDecimalNumber)
+                )
+            }
         )
     }
     .sorted { $0.date < $1.date }
+}
+
+func investmentHoldingSeries(
+    _ points: [InvestmentPortfolioChartPoint]
+) -> [InvestmentHoldingChartValue] {
+    var latestByID: [String: InvestmentHoldingChartValue] = [:]
+    for point in points {
+        for holding in point.holdings {
+            latestByID[holding.id] = holding
+        }
+    }
+    return latestByID.values.sorted {
+        if $0.value == $1.value {
+            return $0.symbol < $1.symbol
+        }
+        return $0.value > $1.value
+    }
+}
+
+func investmentHoldingStackPoints(
+    _ points: [InvestmentPortfolioChartPoint],
+    series: [InvestmentHoldingChartValue]
+) -> [InvestmentHoldingStackPoint] {
+    var result: [InvestmentHoldingStackPoint] = []
+    result.reserveCapacity(points.count * series.count)
+    for point in points {
+        let values = Dictionary(uniqueKeysWithValues: point.holdings.map { ($0.id, $0.value) })
+        var cumulative = 0.0
+        for holding in series {
+            let value = max(0, values[holding.id] ?? 0)
+            let lowerBound = cumulative
+            cumulative += value
+            result.append(InvestmentHoldingStackPoint(
+                date: point.date,
+                holdingID: holding.id,
+                symbol: holding.symbol,
+                value: value,
+                lowerBound: lowerBound,
+                upperBound: cumulative
+            ))
+        }
+    }
+    return result
 }
 
 func sampledInvestmentChartPoints(
@@ -479,6 +676,8 @@ struct InvestmentSchedule: Codable, Identifiable, Equatable {
     let assetType: String
     let symbol: String
     let assetName: String
+    let exchange: String?
+    let marketCurrency: String?
     let broker: String
     let amount: String
     let currency: String
@@ -496,6 +695,8 @@ struct InvestmentSchedule: Codable, Identifiable, Equatable {
         case id, symbol, broker, amount, currency, frequency, timezone, status
         case assetType = "asset_type"
         case assetName = "asset_name"
+        case exchange
+        case marketCurrency = "market_currency"
         case frequencyInterval = "frequency_interval"
         case startDate = "start_date"
         case endDate = "end_date"
@@ -509,6 +710,8 @@ struct InvestmentScheduleRequest: Codable, Equatable {
     let assetType: String
     let symbol: String
     let assetName: String
+    let exchange: String
+    let marketCurrency: String
     let broker: String
     let amount: String
     let currency: String
@@ -524,6 +727,8 @@ struct InvestmentScheduleRequest: Codable, Equatable {
         case symbol, broker, amount, currency, frequency, timezone
         case assetType = "asset_type"
         case assetName = "asset_name"
+        case exchange
+        case marketCurrency = "market_currency"
         case frequencyInterval = "frequency_interval"
         case startDate = "start_date"
         case endDate = "end_date"

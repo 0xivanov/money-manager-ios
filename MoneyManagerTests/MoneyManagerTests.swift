@@ -124,139 +124,342 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertEqual(object["excluded_from_budget"] as? Bool, false)
     }
 
-    func testOnDeviceClassifierUsesRulesAndLearnsCorrections() throws {
-        let suiteName = "MoneyManagerClassifierTests.\(UUID().uuidString)"
-        let preferences = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { preferences.removePersistentDomain(forName: suiteName) }
-        let classifier = OnDeviceTransactionClassifier(
-            preferences: preferences,
-            loadBundledModel: false
-        )
-
-        XCTAssertEqual(
-            classifier.predict(description: "CARD PAYMENT TO LIDL SOFIA", transactionType: "expense"),
-            TransactionCategoryPrediction(category: "groceries", confidence: 0.99, source: .rule)
-        )
-        XCTAssertEqual(
-            classifier.predict(description: "DINNER AT LOCAL RESTAURANT", transactionType: "expense"),
-            TransactionCategoryPrediction(category: "dining_out", confidence: 0.99, source: .rule)
-        )
-        XCTAssertEqual(
-            classifier.predict(description: "DOWNTOWN SHISHA LOUNGE", transactionType: "expense"),
-            TransactionCategoryPrediction(category: "going_out", confidence: 0.99, source: .rule)
-        )
-        XCTAssertEqual(
-            classifier.predict(description: "DOWNTOWN BARBER SHOP", transactionType: "expense"),
-            TransactionCategoryPrediction(category: "beauty", confidence: 0.99, source: .rule)
-        )
+    func testCategoryPresentationForDetailedFoodCategories() {
         XCTAssertEqual(categorySymbol("beauty"), "scissors")
         XCTAssertEqual(categorySymbol("groceries"), "cart.fill")
         XCTAssertEqual(categoryTitle("dining_out"), "Dining Out")
-        XCTAssertNil(classifier.predict(description: "MY LOCAL PLACE 1234", transactionType: "expense"))
+    }
 
-        classifier.rememberCorrection(
-            description: "CARD PAYMENT TO MY LOCAL PLACE 1234",
-            transactionType: "expense",
-            category: "shopping"
+    func testQwenCategoryAssessmentsKeepConfidenceAndRequestClarification() {
+        let assessments = OnDeviceAIService.parseCategoryAssessments(
+            #"{"assessments":[{"transaction_id":41,"category":"going out","confidence":0.92,"needs_clarification":false,"clarification_question":null},{"transaction_id":42,"category":"groceries","confidence":0.52,"needs_clarification":true,"clarification_question":"Was this a supermarket purchase?"}]}"#,
+            transactionIDs: [41, 42, 43],
+            allowedCategoriesByTransactionID: [
+                41: Set(["groceries", "dining_out", "going_out", "other"]),
+                42: Set(["groceries", "dining_out", "going_out", "other"]),
+                43: Set(["salary", "other"]),
+            ]
+        )
+
+        XCTAssertEqual(assessments[0].category, "going_out")
+        XCTAssertFalse(assessments[0].needsClarification)
+        XCTAssertNil(assessments[1].category)
+        XCTAssertTrue(assessments[1].needsClarification)
+        XCTAssertEqual(assessments[1].clarificationQuestion, "Was this a supermarket purchase?")
+        XCTAssertEqual(assessments[2].transactionID, 43)
+        XCTAssertTrue(assessments[2].needsClarification)
+    }
+
+    func testQwenParsesConfirmedFinancialActionProposals() throws {
+        let now = try XCTUnwrap(DateFormat.apiDateTime("2026-07-18T12:00:00Z"))
+        let schedule = OnDeviceAIService.parseFinancialActionResponse(
+            #"{"action":"create_transaction_schedule","message":"Create monthly rent","schedule":{"type":"expense","name":"Rent","category":"housing","description":"Home rent","amount":"1200","frequency":"monthly","frequency_interval":1,"start_date":"2026-08-01","auto_post":true}}"#,
+            expenseCategories: Set(["housing", "other"]),
+            incomeCategories: Set(["salary", "other"]),
+            currency: "EUR",
+            now: now
         )
         XCTAssertEqual(
-            classifier.predict(description: "MY LOCAL PLACE 5678", transactionType: "expense"),
-            TransactionCategoryPrediction(category: "shopping", confidence: 1, source: .correction)
+            schedule.proposal,
+            .transactionSchedule(AITransactionScheduleDraft(
+                type: "expense",
+                name: "Rent",
+                category: "housing",
+                description: "Home rent",
+                amount: "1200",
+                currency: "EUR",
+                frequency: "monthly",
+                frequencyInterval: 1,
+                startDate: "2026-08-01",
+                autoPost: true
+            ))
+        )
+
+        let investment = OnDeviceAIService.parseFinancialActionResponse(
+            #"{"action":"create_investment_trade","message":"Record BTC buy","investment":{"symbol":"BTC","broker":"manual","side":"buy","amount":"100","fees":"1","occurred_at":"2026-07-18T10:00:00Z","notes":"AI entry"}}"#,
+            expenseCategories: [],
+            incomeCategories: [],
+            currency: "EUR",
+            now: now
+        )
+        XCTAssertEqual(
+            investment.proposal,
+            .investmentTrade(AIInvestmentTradeDraft(
+                assetType: "crypto",
+                symbol: "BTC",
+                assetName: "Bitcoin",
+                broker: "manual",
+                side: "buy",
+                amount: "100",
+                fees: "1",
+                currency: "EUR",
+                occurredAt: "2026-07-18T10:00:00Z",
+                notes: "AI entry"
+            ))
         )
     }
 
-    func testRevolutCSVIsAnnotatedOnDeviceAndPreservesQuotedFields() throws {
-        let classifier = OnDeviceTransactionClassifier(loadBundledModel: false)
-        let csv = "Type,Completed Date,Description,Amount,Currency,State\r\n"
-            + "CARD_PAYMENT,2026-07-11 10:01:00,\"LIDL, Sofia\",-12.34,EUR,COMPLETED\r\n"
-            + "CARD_PAYMENT,2026-07-12 10:01:00,Mystery Place,-9.00,EUR,COMPLETED\r\n"
-
-        let result = try RevolutCSVCategoryAnnotator.annotate(Data(csv.utf8), classifier: classifier)
-        let annotated = try XCTUnwrap(String(data: result.data, encoding: .utf8))
-
-        XCTAssertEqual(result.classified, 1)
-        XCTAssertEqual(result.uncertain, 1)
-        XCTAssertTrue(annotated.contains("State,Money Manager Category"))
-        XCTAssertTrue(annotated.contains("\"LIDL, Sofia\",-12.34,EUR,COMPLETED,groceries"))
-        XCTAssertTrue(annotated.contains("Mystery Place,-9.00,EUR,COMPLETED,"))
-    }
-
-    func testBundledTransactionClassifierIsAvailable() {
-        let classifier = OnDeviceTransactionClassifier()
-        XCTAssertTrue(classifier.isModelAvailable)
-        let prediction = classifier.predict(
-            description: "CARD PAYMENT TO ELECTRONICS STORE",
-            transactionType: "expense"
+    func testAIInsightPromptIncludesOnlyScheduledCashFlowFromSummaryMonth() {
+        let summary = TransactionSummary(
+            month: "2026-07",
+            income: "3200.00",
+            expense: "900.00",
+            balance: "2300.00",
+            currency: "EUR",
+            transactionCount: 12
         )
-        XCTAssertEqual(prediction?.category, "shopping")
-        XCTAssertEqual(prediction?.source, .model)
-        XCTAssertGreaterThanOrEqual(prediction?.confidence ?? 0, 0.80)
-    }
-
-    func testGemmaCategoryResponseRequiresAllowedHighConfidenceCategory() {
-        let allowed = Set(["groceries", "dining_out", "going_out", "other"])
-        let prediction = GemmaOnDeviceService.parseCategoryResponse(
-            #"""
-            ```json
-            {"category":"going out","confidence":0.92}
-            ```
-            """#,
-            allowedCategories: allowed
-        )
-
-        XCTAssertEqual(prediction?.category, "going_out")
-        XCTAssertEqual(prediction?.source, .gemma)
-        XCTAssertNil(GemmaOnDeviceService.parseCategoryResponse(
-            #"{"category":"groceries","confidence":0.52}"#,
-            allowedCategories: allowed
-        ))
-        XCTAssertNil(GemmaOnDeviceService.parseCategoryResponse(
-            #"{"category":"salary","confidence":0.99}"#,
-            allowedCategories: allowed
-        ))
-    }
-
-    @MainActor
-    func testLoadedRevolutOtherTransactionIsReclassifiedOnDevice() async throws {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        var api = MoneyManagerAPI(baseURL: URL(string: "https://example.test")!)
-        api.session = URLSession(configuration: configuration)
-        MockURLProtocol.requestHandler = { request in
-            XCTAssertEqual(request.httpMethod, "PUT")
-            XCTAssertEqual(request.url?.path, "/transactions/41")
-            return try MockURLProtocol.response(
-                request: request,
-                json: #"{"id":41,"type":"expense","category":"groceries","description":"CARD PAYMENT TO LIDL","amount":"14.20","currency":"EUR","occurred_at":"2026-07-15","source":"import","status":"booked"}"#
+        let scheduled = [
+            TransactionScheduleOccurrence(
+                id: 1,
+                scheduleID: 10,
+                scheduledFor: "2026-07-31",
+                status: "planned",
+                type: "income",
+                name: "Salary",
+                category: "salary",
+                description: "",
+                amount: "3000.00",
+                currency: "EUR",
+                autoPost: false,
+                transactionID: nil
+            ),
+            TransactionScheduleOccurrence(
+                id: 2,
+                scheduleID: 11,
+                scheduledFor: "2026-08-02",
+                status: "planned",
+                type: "expense",
+                name: "Rent",
+                category: "housing",
+                description: "",
+                amount: "1200.00",
+                currency: "EUR",
+                autoPost: true,
+                transactionID: nil
+            ),
+            TransactionScheduleOccurrence(
+                id: 3,
+                scheduleID: 12,
+                scheduledFor: "2026-07-10",
+                status: "posted",
+                type: "expense",
+                name: "Already posted",
+                category: "other",
+                description: "",
+                amount: "50.00",
+                currency: "EUR",
+                autoPost: true,
+                transactionID: 99
             )
-        }
-        defer { MockURLProtocol.requestHandler = nil }
+        ]
 
-        let store = MoneyManagerStore(api: api)
-        store.token = "token"
-        store.month = "2026-07"
+        let payment = Transaction(
+            id: 77,
+            type: "expense",
+            category: "dining_out",
+            description: "DINNER AT LOCAL RESTAURANT",
+            amount: "52.40",
+            currency: "EUR",
+            occurredAt: "2026-07-16T20:15:00Z",
+            source: "open_banking",
+            status: "booked",
+            excludedFromBudget: true,
+            scheduleOccurrenceID: 99
+        )
+        let prompt = AIInsightPrompt.make(
+            summary: summary,
+            transactions: [payment],
+            budgets: [],
+            scheduledOccurrences: scheduled,
+            portfolio: .empty
+        )
+
+        XCTAssertTrue(prompt.contains("COMPLETE_FINANCIAL_DATA_JSON"))
+        XCTAssertTrue(prompt.contains("DINNER AT LOCAL RESTAURANT"))
+        XCTAssertTrue(prompt.contains(#""excluded_from_budget":true"#))
+        XCTAssertTrue(prompt.contains(#""schedule_occurrence_id":99"#))
+        XCTAssertTrue(prompt.contains(#""source":"open_banking""#))
+        XCTAssertTrue(prompt.contains(#""scheduled_for":"2026-07-31""#))
+        XCTAssertFalse(prompt.contains("2026-08-02"))
+        XCTAssertFalse(prompt.contains("Already posted"))
+    }
+
+    func testAIInsightTextNormalizesModelBullets() {
+        XCTAssertEqual(
+            AIInsightText.lines("- **Cash flow:** Positive\n* Spending is stable\n• Save the remainder"),
+            ["**Cash flow:** Positive", "Spending is stable", "Save the remainder"]
+        )
+    }
+
+    func testAIInsightCachePersistsPerUserAndMonth() throws {
+        let suiteName = "MoneyManagerInsightCacheTests.\(UUID().uuidString)"
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { preferences.removePersistentDomain(forName: suiteName) }
+        let generatedAt = Date(timeIntervalSince1970: 1_753_000_000)
+
+        AIInsightCache.save(
+            text: "Cached July insight",
+            userID: "IVAN@example.com ",
+            month: "2026-07",
+            preferences: preferences,
+            generatedAt: generatedAt
+        )
+
+        XCTAssertEqual(
+            AIInsightCache.load(
+                userID: "ivan@example.com",
+                month: "2026-07",
+                preferences: preferences
+            ),
+            AIInsightCacheEntry(text: "Cached July insight", generatedAt: generatedAt)
+        )
+        XCTAssertNil(AIInsightCache.load(
+            userID: "other@example.com",
+            month: "2026-07",
+            preferences: preferences
+        ))
+        XCTAssertNil(AIInsightCache.load(
+            userID: "ivan@example.com",
+            month: "2026-08",
+            preferences: preferences
+        ))
+    }
+
+    func testPortfolioQuestionPromptIncludesBoundedStructuredPortfolioData() {
+        let portfolio = InvestmentPortfolio(
+            positions: [investmentPosition(priceAsOf: "2026-07-17T08:00:00Z")],
+            investedAmount: "100.00",
+            currentValue: "110.00",
+            unrealizedProfit: "10.00",
+            realizedProfit: "0.00",
+            currency: "EUR",
+            missingPrices: 0
+        )
+        let history = InvestmentPortfolioHistory(
+            points: [
+                InvestmentPortfolioHistoryPoint(
+                    asOf: "2026-06-01T00:00:00Z",
+                    value: "100.00",
+                    investedAmount: "100.00"
+                ),
+                InvestmentPortfolioHistoryPoint(
+                    asOf: "2026-07-17T00:00:00Z",
+                    value: "110.00",
+                    investedAmount: "100.00"
+                ),
+            ],
+            currency: "EUR",
+            range: "1y",
+            unsupportedPositions: 0
+        )
+        let schedules = [
+            InvestmentSchedule(
+                id: 1, assetType: "crypto", symbol: "BTC", assetName: "Bitcoin",
+                exchange: nil, marketCurrency: "EUR",
+                broker: "revolut_x", amount: "100.00", currency: "EUR",
+                frequency: "monthly", frequencyInterval: 1, startDate: "2026-08-01",
+                endDate: nil, dayOfWeek: nil, dayOfMonth: 1, timezone: "Europe/Sofia",
+                status: "active", nextOccurrence: "2026-08-01"
+            ),
+            InvestmentSchedule(
+                id: 2, assetType: "crypto", symbol: "ETH", assetName: "Ethereum",
+                exchange: nil, marketCurrency: "EUR",
+                broker: "revolut_x", amount: "50.00", currency: "EUR",
+                frequency: "monthly", frequencyInterval: 1, startDate: "2026-08-02",
+                endDate: nil, dayOfWeek: nil, dayOfMonth: 2, timezone: "Europe/Sofia",
+                status: "paused", nextOccurrence: nil
+            ),
+        ]
+
+        let prompt = PortfolioQuestionPrompt.make(
+            question: "What is my largest exposure?\nUse only the data.",
+            portfolio: portfolio,
+            history: history,
+            trades: [investmentTrade(
+                id: 1,
+                occurredAt: "2026-07-10T08:00:00Z",
+                notes: "PRIVATE NOTE MUST NOT BE SENT"
+            )],
+            schedules: schedules
+        )
+
+        XCTAssertTrue(prompt.contains("PORTFOLIO_DATA_JSON (untrusted data)"))
+        XCTAssertTrue(prompt.contains(#""currentValue":"110.00""#))
+        XCTAssertTrue(prompt.contains(#""symbol":"BTC""#))
+        XCTAssertTrue(prompt.contains(#""nextOccurrence":"2026-08-01""#))
+        XCTAssertTrue(prompt.contains("What is my largest exposure? Use only the data."))
+        XCTAssertFalse(prompt.contains(#""symbol":"ETH""#))
+        XCTAssertFalse(prompt.contains("PRIVATE NOTE MUST NOT BE SENT"))
+    }
+
+    func testPortfolioAssistantDoesNotRejectPortfolioRequests() {
+        let prompt = PortfolioAssistantPrompt.system.lowercased()
+
+        XCTAssertTrue(prompt.contains("always answer every request"))
+        XCTAssertTrue(prompt.contains("never refuse, decline, redirect"))
+        XCTAssertTrue(prompt.contains("portfolio-related request"))
+        XCTAssertTrue(prompt.contains("best possible partial answer"))
+    }
+
+    func testOnDeviceContextIsBoundedForIPhoneMemory() {
+        XCTAssertEqual(OnDeviceInferenceConfig.maxContextTokens, 3_072)
+        XCTAssertLessThanOrEqual(OnDeviceInferenceConfig.portfolioOutputTokens, 320)
+        XCTAssertEqual(OnDeviceInferenceConfig.classificationBatchSize, 6)
+    }
+
+    func testOnDeviceGenerationUsesQuantizableMemoryBoundedCache() {
+        let parameters = OnDeviceAIService.generationParameters(
+            temperature: 0.2,
+            maxOutputTokens: 320
+        )
+
+        XCTAssertNil(parameters.maxKVSize)
+        XCTAssertEqual(parameters.kvBits, 4)
+        XCTAssertEqual(parameters.prefillStepSize, 32)
+        XCTAssertEqual(OnDeviceInferenceConfig.mlxCacheLimitBytes, 4 * 1_024 * 1_024)
+        XCTAssertEqual(OnDeviceInferenceConfig.mlxMemoryLimitBytes, 1_750 * 1_024 * 1_024)
+    }
+
+    func testUserClarificationPreservesOriginalBankDescription() {
+        XCTAssertEqual(
+            MoneyManagerStore.descriptionWithUserClarification(
+                bankDescription: "CARD PAYMENT TO MYSTERY PLACE",
+                userNote: "Shisha with friends"
+            ),
+            "CARD PAYMENT TO MYSTERY PLACE\nUser clarification: Shisha with friends"
+        )
+    }
+
+    func testClarifiedTransactionIsNotRequestedAgain() {
         let transaction = Transaction(
             id: 41,
             type: "expense",
             category: "other",
-            description: "CARD PAYMENT TO LIDL",
-            amount: "14.20",
+            description: "CARD PAYMENT TO MYSTERY PLACE\nUser clarification: Shisha with friends",
+            amount: "18.00",
             currency: "EUR",
-            occurredAt: "2026-07-15",
-            source: "import",
+            occurredAt: "2026-07-18",
+            source: "open_banking",
             status: "booked"
         )
-        store.transactions = [transaction]
 
-        store.scheduleOnDeviceClassification(
-            for: [transaction],
-            token: "token",
-            generation: store.sessionGeneration,
-            month: "2026-07"
-        )
-        await store.categoryClassificationTask?.value
+        XCTAssertFalse(MoneyManagerStore.shouldRequestClarification(
+            for: transaction,
+            dismissedTransactionIDs: []
+        ))
+    }
 
-        XCTAssertEqual(store.transactions.first?.category, "groceries")
+    @MainActor
+    func testSkippedTransactionClarificationPersistsAcrossRelaunch() throws {
+        let suiteName = "MoneyManagerClarificationTests.\(UUID().uuidString)"
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { preferences.removePersistentDomain(forName: suiteName) }
+
+        let firstStore = MoneyManagerStore(preferences: preferences)
+        firstStore.rememberDismissedTransactionClarification(id: 73)
+
+        let restoredStore = MoneyManagerStore(preferences: preferences)
+        XCTAssertTrue(restoredStore.dismissedClarificationTransactionIDs.contains(73))
     }
 
     func testDecodesPlanningAndInvestmentContracts() throws {
@@ -307,6 +510,8 @@ final class MoneyManagerTests: XCTestCase {
             assetType: "crypto",
             symbol: "BTC",
             assetName: "Bitcoin",
+            exchange: "",
+            marketCurrency: "EUR",
             broker: "revolut_x",
             side: "buy",
             amount: "125.50",
@@ -336,7 +541,7 @@ final class MoneyManagerTests: XCTestCase {
                 XCTAssertEqual(components.queryItems?.first(where: { $0.name == "range" })?.value, "1y")
                 return try MockURLProtocol.response(
                     request: request,
-                    json: #"{"points":[{"as_of":"2026-07-01T00:00:00Z","value":"100.00","invested_amount":"90.00"},{"as_of":"2026-07-14T18:30:00.123Z","value":"130.00","invested_amount":"125.50"}],"currency":"EUR","range":"1y","unsupported_positions":2}"#
+                    json: #"{"points":[{"as_of":"2026-07-01T00:00:00Z","value":"100.00","invested_amount":"90.00","holdings":[{"asset_type":"crypto","symbol":"BTC","asset_name":"Bitcoin","value":"100.00"}]},{"as_of":"2026-07-14T18:30:00.123Z","value":"130.00","invested_amount":"125.50","holdings":[{"asset_type":"crypto","symbol":"BTC","asset_name":"Bitcoin","value":"100.00"},{"asset_type":"stock","symbol":"QDVE","asset_name":"iShares S&P 500 IT","exchange":"XETRA","value":"30.00"}]}],"currency":"EUR","range":"1y","unsupported_positions":2}"#
                 )
             default:
                 throw URLError(.badURL)
@@ -353,13 +558,25 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertEqual(history.points.count, 2)
         XCTAssertEqual(history.unsupportedPositions, 2)
         XCTAssertNotNil(history.points.last?.date)
+        XCTAssertEqual(history.points.last?.holdings.map(\.symbol), ["BTC", "QDVE"])
+        XCTAssertEqual(history.points.last?.holdings.last?.exchange, "XETRA")
     }
 
-    func testInvestmentAssetCatalogOnlyEnablesBTCAndETH() {
-        XCTAssertEqual(InvestmentAssetCatalog.tradeEnabled.map(\.symbol), ["BTC", "ETH"])
-        XCTAssertTrue(InvestmentAssetCatalog.all.filter { $0.type == .stock }.allSatisfy { !$0.isTradeEnabled })
+    func testInvestmentAssetCatalogEnablesAutomaticallyPricedCryptoStocksAndETFs() {
+        XCTAssertEqual(
+            InvestmentAssetCatalog.tradeEnabled.map(\.symbol),
+            ["BTC", "ETH", "AAPL", "MSFT", "MSTR", "VWCE", "SXR8", "QDVE", "VGWE", "4GLD"]
+        )
+        XCTAssertTrue(InvestmentAssetCatalog.all.filter { $0.type == .stock }.allSatisfy(\.isTradeEnabled))
         XCTAssertTrue(InvestmentAssetCatalog.hasAutomaticPricing(assetType: "crypto", symbol: "btc"))
-        XCTAssertFalse(InvestmentAssetCatalog.hasAutomaticPricing(assetType: "stock", symbol: "AAPL"))
+        XCTAssertTrue(InvestmentAssetCatalog.hasAutomaticPricing(assetType: "stock", symbol: "AAPL"))
+        XCTAssertEqual(InvestmentAssetCatalog.apple.exchange, "NASDAQ")
+        XCTAssertEqual(InvestmentAssetCatalog.apple.marketCurrency, "USD")
+        XCTAssertEqual(InvestmentAssetCatalog.strategy.exchange, "NASDAQ")
+        XCTAssertEqual(InvestmentAssetCatalog.strategy.marketCurrency, "USD")
+        XCTAssertEqual(InvestmentAssetCatalog.iSharesSP500InformationTechnology.exchange, "XETRA")
+        XCTAssertEqual(InvestmentAssetCatalog.vanguardAllWorldHighDividend.marketCurrency, "EUR")
+        XCTAssertEqual(InvestmentAssetCatalog.xetraGold.symbol, "4GLD")
     }
 
     func testInvestmentTradesAreGroupedAndSortedByDay() throws {
@@ -459,6 +676,48 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertEqual(axisDates.first, parsed.first?.date)
         XCTAssertEqual(axisDates.last, parsed.last?.date)
         XCTAssertFalse(investmentHistoryAxisLabel(try XCTUnwrap(axisDates.first), range: "5y").isEmpty)
+    }
+
+    func testPortfolioHoldingSeriesBuildsStableStackedSubgraphs() throws {
+        let points = investmentPortfolioChartPoints([
+            InvestmentPortfolioHistoryPoint(
+                asOf: "2026-07-17T00:00:00Z",
+                value: "150.00",
+                investedAmount: "130.00",
+                holdings: [
+                    InvestmentPortfolioHistoryHolding(
+                        assetType: "crypto", symbol: "BTC", assetName: "Bitcoin", exchange: nil, value: "100.00"
+                    ),
+                    InvestmentPortfolioHistoryHolding(
+                        assetType: "stock", symbol: "QDVE", assetName: "iShares S&P 500 IT", exchange: "XETRA", value: "50.00"
+                    ),
+                ]
+            ),
+            InvestmentPortfolioHistoryPoint(
+                asOf: "2026-07-18T00:00:00Z",
+                value: "180.00",
+                investedAmount: "130.00",
+                holdings: [
+                    InvestmentPortfolioHistoryHolding(
+                        assetType: "crypto", symbol: "BTC", assetName: "Bitcoin", exchange: nil, value: "120.00"
+                    ),
+                    InvestmentPortfolioHistoryHolding(
+                        assetType: "stock", symbol: "QDVE", assetName: "iShares S&P 500 IT", exchange: "XETRA", value: "60.00"
+                    ),
+                ]
+            ),
+        ])
+
+        let series = investmentHoldingSeries(points)
+        let stacked = investmentHoldingStackPoints(points, series: series)
+
+        XCTAssertEqual(series.map(\.symbol), ["BTC", "QDVE"])
+        XCTAssertEqual(stacked.count, 4)
+        XCTAssertEqual(stacked[0].lowerBound, 0, accuracy: 0.001)
+        XCTAssertEqual(stacked[0].upperBound, 100, accuracy: 0.001)
+        XCTAssertEqual(stacked[1].lowerBound, 100, accuracy: 0.001)
+        XCTAssertEqual(stacked[1].upperBound, 150, accuracy: 0.001)
+        XCTAssertEqual(stacked[3].upperBound, 180, accuracy: 0.001)
     }
 
     @MainActor
@@ -608,6 +867,41 @@ final class MoneyManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testInvestmentTransferIsNotSpendingAndMatchesRevolutXBuy() {
+        let store = MoneyManagerStore()
+        store.transactions = [
+            Transaction(
+                id: 10,
+                type: "expense",
+                category: "investment_transfer",
+                description: "Transfer to Revolut X",
+                amount: "25.00",
+                currency: "EUR",
+                occurredAt: "2026-07-11",
+                excludedFromBudget: true,
+                purpose: "investment_transfer"
+            ),
+            Transaction(id: 11, type: "expense", category: "groceries", amount: "40.00", currency: "EUR", occurredAt: "2026-07-11")
+        ]
+        store.growth.investmentTrades = [
+            investmentTrade(id: 1, occurredAt: "2026-07-11T10:00:00Z", amount: "25.00")
+        ]
+        let summary = TransactionSummary(
+            month: "2026-07",
+            income: "1000.00",
+            expense: "40.00",
+            cashOutflow: "65.00",
+            balance: "935.00",
+            currency: "EUR",
+            transactionCount: 2
+        )
+
+        XCTAssertEqual(store.expenseCategoryTotals.map(\.category), ["groceries"])
+        XCTAssertEqual(store.monthlyInvestmentCashFlow(month: "2026-07", currency: "EUR"), .zero)
+        XCTAssertEqual(store.balanceAfterInvestments(summary), Decimal(string: "935.00"))
+    }
+
+    @MainActor
     func testTransactionSearchAndCategoryFilters() {
         let store = MoneyManagerStore()
         store.transactions = [
@@ -645,13 +939,16 @@ private func investmentTrade(
     side: String = "buy",
     amount: String = "100.00",
     fees: String = "0.00",
-    currency: String = "EUR"
+    currency: String = "EUR",
+    notes: String = ""
 ) -> InvestmentTrade {
     InvestmentTrade(
         id: id,
         assetType: "crypto",
         symbol: "BTC",
         assetName: "Bitcoin",
+        exchange: nil,
+        marketCurrency: "EUR",
         broker: "revolut_x",
         side: side,
         amount: amount,
@@ -660,7 +957,7 @@ private func investmentTrade(
         fees: fees,
         currency: currency,
         occurredAt: occurredAt,
-        notes: "",
+        notes: notes,
         priceProvider: "kraken",
         priceAsOf: occurredAt
     )
@@ -671,6 +968,8 @@ private func investmentPosition(priceAsOf: String?) -> InvestmentPosition {
         assetType: "crypto",
         symbol: "BTC",
         assetName: "Bitcoin",
+        exchange: nil,
+        marketCurrency: "EUR",
         broker: "revolut_x",
         quantity: "0.001",
         averageCost: "100000.00",

@@ -99,6 +99,7 @@ func categorySymbol(_ category: String) -> String {
     case "freelance": return "laptopcomputer"
     case "gift": return "gift.fill"
     case "investment": return "chart.line.uptrend.xyaxis"
+    case "investment_transfer": return "arrow.left.arrow.right.circle.fill"
     case "refund": return "receipt.fill"
     default:
         let symbols = [

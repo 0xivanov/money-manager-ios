@@ -33,13 +33,35 @@ struct TransactionEditorView: View {
                         .lineLimit(1...3)
                         .textInputAutocapitalization(.sentences)
 
-                    NavigationLink {
-                        CategoryPickerView(store: store)
-                    } label: {
+                    if store.formPurpose == "investment_transfer" {
                         CategorySelectorLabel(store: store)
+                    } else {
+                        NavigationLink {
+                            CategoryPickerView(store: store)
+                        } label: {
+                            CategorySelectorLabel(store: store)
+                        }
                     }
 
                     DatePicker("Date", selection: $store.formOccurredAt, in: ...Date(), displayedComponents: .date)
+                }
+
+                if store.formType == TransactionType.expense.rawValue {
+                    Section {
+                        Toggle("Investment transfer", isOn: investmentTransferBinding)
+
+                        if store.formPurpose == "investment_transfer" {
+                            Picker("Revolut X plan", selection: $store.formInvestmentScheduleID) {
+                                Text("Not linked").tag(Int?.none)
+                                ForEach(store.revolutXInvestmentSchedules) { schedule in
+                                    Text("\(schedule.symbol) · \(MoneyFormat.amount(MoneyFormat.decimal(from: schedule.amount), currency: schedule.currency))")
+                                        .tag(Int?.some(schedule.id))
+                                }
+                            }
+                        }
+                    } footer: {
+                        Text("Investment transfers reduce cash, but are excluded from spending totals and budgets. Linking a plan prevents the matching Revolut X buy from being counted twice.")
+                    }
                 }
 
                 if let error = store.error, !error.isEmpty {
@@ -72,6 +94,13 @@ struct TransactionEditorView: View {
     private var title: String {
         if store.editingID != nil { return "Edit transaction" }
         return store.formType == TransactionType.income.rawValue ? "Add income" : "Add expense"
+    }
+
+    private var investmentTransferBinding: Binding<Bool> {
+        Binding(
+            get: { store.formPurpose == "investment_transfer" },
+            set: store.setInvestmentTransfer
+        )
     }
 }
 

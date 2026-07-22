@@ -54,13 +54,44 @@ extension MoneyManagerStore {
         formDescription = transaction.description ?? ""
         formAmount = transaction.amount
         formOccurredAt = DateFormat.apiDate(transaction.occurredAt) ?? Date()
+        formExcludedFromBudget = transaction.excludedFromBudget ?? false
+        formPurpose = transaction.purpose ?? "spending"
+        formInvestmentScheduleID = transaction.investmentScheduleID
         activeSheet = .transactionEditor
     }
 
     func updateFormType(_ type: String) {
+        if type == TransactionType.income.rawValue {
+            setInvestmentTransfer(false)
+        }
         formType = type
         let categories = type == TransactionType.income.rawValue ? incomeCategories : expenseCategories
         formCategory = categories.first?.name ?? (type == TransactionType.income.rawValue ? "salary" : "groceries")
+    }
+
+    func setInvestmentTransfer(_ enabled: Bool) {
+        formPurpose = enabled ? "investment_transfer" : "spending"
+        formInvestmentScheduleID = enabled ? suggestedInvestmentScheduleID : nil
+        formExcludedFromBudget = enabled
+        if enabled {
+            formType = TransactionType.expense.rawValue
+            formCategory = "investment_transfer"
+        } else if formCategory == "investment_transfer" {
+            formCategory = expenseCategories.first(where: { $0.name != "investment_transfer" })?.name ?? "groceries"
+        }
+    }
+
+    var revolutXInvestmentSchedules: [InvestmentSchedule] {
+        growth.investmentSchedules.filter {
+            $0.broker.caseInsensitiveCompare("revolut_x") == .orderedSame && $0.status == "active"
+        }
+    }
+
+    private var suggestedInvestmentScheduleID: Int? {
+        let amount = MoneyFormat.inputDecimal(from: formAmount)
+        return revolutXInvestmentSchedules.first {
+            amount != nil && MoneyFormat.decimal(from: $0.amount) == amount
+        }?.id ?? revolutXInvestmentSchedules.first?.id
     }
 
     func chooseFormCategory(_ category: String) {
@@ -88,21 +119,13 @@ extension MoneyManagerStore {
                     description: description.isEmpty ? nil : description,
                     amount: MoneyFormat.apiAmount(amount),
                     currency: self.summary?.currency ?? "EUR",
-                    occurredAt: DateFormat.isoDate.string(from: self.formOccurredAt)
+                    occurredAt: DateFormat.isoDate.string(from: self.formOccurredAt),
+                    excludedFromBudget: self.formExcludedFromBudget,
+                    purpose: self.formPurpose,
+                    investmentScheduleID: self.formInvestmentScheduleID
                 )
                 if let editingID = self.editingID {
-                    let original = self.transactions.first { $0.id == editingID }
                     _ = try await self.api.updateTransaction(token: token, id: editingID, transaction: request)
-                    if let original,
-                        original.category.caseInsensitiveCompare(request.category) != .orderedSame,
-                        original.source == "import" || original.source == "open_banking"
-                    {
-                        OnDeviceTransactionClassifier.shared.rememberCorrection(
-                            description: request.description ?? original.description ?? "",
-                            transactionType: request.type,
-                            category: request.category
-                        )
-                    }
                 } else {
                     _ = try await self.api.createTransaction(token: token, transaction: request)
                 }
@@ -204,13 +227,9 @@ extension MoneyManagerStore {
             defer { self.isImporting = false }
             await self.runRequest(generation: generation) {
                 guard let token = self.token else { return }
-                let annotation = try RevolutCSVCategoryAnnotator.annotate(data)
-                let result = try await self.api.importRevolutCSV(token: token, data: annotation.data)
+                let result = try await self.api.importRevolutCSV(token: token, data: data)
                 try self.requireCurrentSession(token: token, generation: generation)
-                let classificationMessage = annotation.classified > 0
-                    ? " Categorized \(annotation.classified) on this device."
-                    : ""
-                self.importResultMessage = "Imported \(result.imported). Skipped \(result.skipped) duplicates and \(result.ignored) unsupported rows.\(classificationMessage)"
+                self.importResultMessage = "Imported \(result.imported). Skipped \(result.skipped) duplicates and \(result.ignored) unsupported rows. Qwen will review uncategorized payments."
                 await self.refresh()
             }
         }
@@ -223,14 +242,18 @@ extension MoneyManagerStore {
         month requestedMonth: String
     ) {
         categoryClassificationTask?.cancel()
-        let classifier = OnDeviceTransactionClassifier.shared
-        let candidates = sourceTransactions.compactMap { transaction -> Transaction? in
-            guard transaction.category.caseInsensitiveCompare("other") == .orderedSame,
-                transaction.source == "import" || transaction.source == "open_banking",
-                transaction.description?.isEmpty == false
-            else { return nil }
-            return transaction
+        guard OnDeviceModelManager.shared.isModelInstalled,
+            OnDeviceModelManager.shared.isClassificationEnabled
+        else {
+            categoryClassificationTask = nil
+            return
         }
+        let candidates = Array(sourceTransactions.filter { transaction in
+            Self.shouldRequestClarification(
+                for: transaction,
+                dismissedTransactionIDs: dismissedClarificationTransactionIDs
+            )
+        }.prefix(OnDeviceInferenceConfig.classificationBatchSize))
         guard !candidates.isEmpty else {
             categoryClassificationTask = nil
             return
@@ -238,40 +261,37 @@ extension MoneyManagerStore {
 
         categoryClassificationTask = Task { [weak self] in
             guard let self else { return }
-            for transaction in candidates {
-                do {
+            do {
+                let assessments = try await OnDeviceAIService.shared.classifyTransactions(
+                    candidates,
+                    contextTransactions: sourceTransactions,
+                    allowedCategoriesByType: [
+                        TransactionType.expense.rawValue: self.expenseCategories.map(\.name),
+                        TransactionType.income.rawValue: self.incomeCategories.map(\.name),
+                    ]
+                )
+                try self.requireCurrentSession(token: requestedToken, generation: generation)
+                let transactionsByID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+                for assessment in assessments {
                     try Task.checkCancellation()
-                    try self.requireCurrentSession(token: requestedToken, generation: generation)
-                    guard let description = transaction.description else { continue }
-                    let prediction: TransactionCategoryPrediction?
-                    if let localPrediction = classifier.predict(
-                        description: description,
-                        transactionType: transaction.type
-                    ) {
-                        prediction = localPrediction
-                    } else if GemmaModelManager.shared.isModelInstalled,
-                        GemmaModelManager.shared.isClassificationEnabled
-                    {
-                        let categories = transaction.type == TransactionType.income.rawValue
-                            ? self.incomeCategories.map(\.name)
-                            : self.expenseCategories.map(\.name)
-                        prediction = try await GemmaOnDeviceService.shared.classify(
-                            description: description,
-                            transactionType: transaction.type,
-                            allowedCategories: categories
+                    guard let transaction = transactionsByID[assessment.transactionID] else { continue }
+                    guard let category = assessment.category else {
+                        self.enqueueTransactionClarification(
+                            transaction: transaction,
+                            question: assessment.clarificationQuestion
                         )
-                    } else {
-                        prediction = nil
+                        continue
                     }
-                    guard let prediction, prediction.category != "other" else { continue }
                     let request = TransactionRequest(
                         type: transaction.type,
-                        category: prediction.category,
+                        category: category,
                         description: transaction.description,
                         amount: transaction.amount,
                         currency: transaction.currency,
                         occurredAt: DateFormat.dateOnly(transaction.occurredAt),
-                        excludedFromBudget: transaction.excludedFromBudget ?? false
+                        excludedFromBudget: transaction.excludedFromBudget ?? false,
+                        purpose: transaction.purpose ?? "spending",
+                        investmentScheduleID: transaction.investmentScheduleID
                     )
                     let updated = try await self.api.updateTransaction(
                         token: requestedToken,
@@ -284,23 +304,150 @@ extension MoneyManagerStore {
                         self.transactions[index].category.caseInsensitiveCompare("other") == .orderedSame
                     else { continue }
                     self.transactions[index] = updated
-                } catch APIError.unauthorized {
-                    guard self.isCurrentSession(token: requestedToken, generation: generation) else { return }
-                    self.expireSession(message: APIError.unauthorized.localizedDescription)
-                    return
-                } catch is CancellationError {
-                    return
-                } catch let urlError as URLError where urlError.code == .cancelled {
-                    return
-                } catch {
-                    // Classification is best effort. Uncertain or rejected rows remain Other.
-                    continue
                 }
+            } catch APIError.unauthorized {
+                guard self.isCurrentSession(token: requestedToken, generation: generation) else { return }
+                self.expireSession(message: APIError.unauthorized.localizedDescription)
+                return
+            } catch is CancellationError {
+                return
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                return
+            } catch {
+                // Classification is best effort. Failed rows remain Other until the next refresh.
             }
             if self.isCurrentSession(token: requestedToken, generation: generation) {
                 self.categoryClassificationTask = nil
             }
         }
+    }
+
+    func submitTransactionClarification(_ note: String) async {
+        guard let clarification = activeTransactionClarification,
+            let token,
+            !isSavingTransactionClarification
+        else { return }
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedNote.isEmpty else { return }
+        isSavingTransactionClarification = true
+        error = nil
+        defer { isSavingTransactionClarification = false }
+
+        let transaction = clarification.transaction
+        let description = Self.descriptionWithUserClarification(
+            bankDescription: transaction.description,
+            userNote: trimmedNote
+        )
+        let enriched = Transaction(
+            id: transaction.id,
+            type: transaction.type,
+            category: transaction.category,
+            description: description,
+            amount: transaction.amount,
+            currency: transaction.currency,
+            occurredAt: transaction.occurredAt,
+            source: transaction.source,
+            status: transaction.status,
+            excludedFromBudget: transaction.excludedFromBudget,
+            scheduleOccurrenceID: transaction.scheduleOccurrenceID,
+            purpose: transaction.purpose,
+            investmentScheduleID: transaction.investmentScheduleID
+        )
+
+        do {
+            let contextTransactions = transactions.map {
+                $0.id == enriched.id ? enriched : $0
+            }
+            let assessment = try await OnDeviceAIService.shared.classifyTransactions(
+                [enriched],
+                contextTransactions: contextTransactions,
+                allowedCategoriesByType: [
+                    TransactionType.expense.rawValue: expenseCategories.map(\.name),
+                    TransactionType.income.rawValue: incomeCategories.map(\.name),
+                ]
+            ).first
+            let request = TransactionRequest(
+                type: enriched.type,
+                category: assessment?.category ?? "other",
+                description: description,
+                amount: enriched.amount,
+                currency: enriched.currency,
+                occurredAt: DateFormat.dateOnly(enriched.occurredAt),
+                excludedFromBudget: enriched.excludedFromBudget ?? false,
+                purpose: enriched.purpose ?? "spending",
+                investmentScheduleID: enriched.investmentScheduleID
+            )
+            let updated = try await api.updateTransaction(
+                token: token,
+                id: enriched.id,
+                transaction: request
+            )
+            if let index = transactions.firstIndex(where: { $0.id == updated.id }) {
+                transactions[index] = updated
+            }
+            rememberDismissedTransactionClarification(id: enriched.id)
+            advanceTransactionClarificationQueue()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func skipTransactionClarification() {
+        if let id = activeTransactionClarification?.id {
+            rememberDismissedTransactionClarification(id: id)
+        }
+        advanceTransactionClarificationQueue()
+    }
+
+    nonisolated static func shouldRequestClarification(
+        for transaction: Transaction,
+        dismissedTransactionIDs: Set<Int>
+    ) -> Bool {
+        guard transaction.category.caseInsensitiveCompare("other") == .orderedSame,
+            transaction.source == "import" || transaction.source == "open_banking",
+            !dismissedTransactionIDs.contains(transaction.id)
+        else { return false }
+
+        return transaction.description?.range(
+            of: "User clarification:",
+            options: [.caseInsensitive, .diacriticInsensitive]
+        ) == nil
+    }
+
+    nonisolated static func descriptionWithUserClarification(
+        bankDescription: String?,
+        userNote: String
+    ) -> String {
+        let original = bankDescription?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let note = String(userNote.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+        return original.isEmpty
+            ? "User clarification: \(note)"
+            : "\(original)\nUser clarification: \(note)"
+    }
+
+    private func enqueueTransactionClarification(
+        transaction: Transaction,
+        question: String?
+    ) {
+        let clarification = TransactionClarification(
+            transaction: transaction,
+            question: question ?? "What was this payment for?"
+        )
+        guard activeTransactionClarification?.id != clarification.id,
+            !queuedTransactionClarifications.contains(where: { $0.id == clarification.id }),
+            !dismissedClarificationTransactionIDs.contains(clarification.id)
+        else { return }
+        if activeTransactionClarification == nil {
+            activeTransactionClarification = clarification
+        } else {
+            queuedTransactionClarifications.append(clarification)
+        }
+    }
+
+    private func advanceTransactionClarificationQueue() {
+        activeTransactionClarification = queuedTransactionClarifications.isEmpty
+            ? nil
+            : queuedTransactionClarifications.removeFirst()
     }
 
     func clearForm() {
@@ -310,6 +457,9 @@ extension MoneyManagerStore {
         formDescription = ""
         formAmount = ""
         formOccurredAt = Date()
+        formExcludedFromBudget = false
+        formPurpose = "spending"
+        formInvestmentScheduleID = nil
         newCategoryName = ""
     }
 

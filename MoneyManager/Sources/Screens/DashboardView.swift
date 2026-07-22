@@ -291,6 +291,7 @@ struct DashboardView: View {
 private struct DashboardContent: View {
     @Bindable var store: MoneyManagerStore
     let summary: TransactionSummary
+    @State private var modelManager = OnDeviceModelManager.shared
 
     var body: some View {
         if case .failed(let message) = store.dashboardLoadState {
@@ -312,6 +313,29 @@ private struct DashboardContent: View {
                 .listRowBackground(Color.clear)
         }
 
+        if modelManager.isModelInstalled {
+            Section("AI Insights") {
+                DashboardAIInsightsCard(
+                    store: store,
+                    summary: summary
+                )
+                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
+                    .listRowBackground(Color.clear)
+            }
+        } else {
+            Section("AI") {
+                NavigationLink {
+                    AIInsightsView(store: store)
+                } label: {
+                    PlanningLinkRow(
+                        icon: "sparkles",
+                        title: "AI Insights",
+                        detail: "Set up optional on-device Qwen"
+                    )
+                }
+            }
+        }
+
         Section("Investments") {
             DashboardInvestmentCard(store: store)
                 .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
@@ -322,20 +346,6 @@ private struct DashboardContent: View {
             SpendingCard(store: store, currency: summary.currency)
                 .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
                 .listRowBackground(Color.clear)
-        }
-
-        Section("AI") {
-            NavigationLink {
-                AIInsightsView(store: store)
-            } label: {
-                PlanningLinkRow(
-                    icon: "sparkles",
-                    title: "AI Insights",
-                    detail: GemmaModelManager.shared.isModelInstalled
-                        ? "Private analysis on this device"
-                        : "Set up optional on-device Gemma"
-                )
-            }
         }
 
         Section("Plan") {
@@ -366,6 +376,123 @@ private struct DashboardContent: View {
         guard !store.growth.budgets.isEmpty else { return "Set your first spending limit" }
         let approaching = store.growth.budgets.filter { $0.alertLevel != "safe" }.count
         return approaching == 0 ? "All budgets on track" : "\(approaching) need attention"
+    }
+}
+
+private struct DashboardAIInsightsCard: View {
+    @Bindable var store: MoneyManagerStore
+    let summary: TransactionSummary
+    @State private var insightText = ""
+    @State private var generatedAt: Date?
+    @State private var isGenerating = false
+    @State private var generationError: String?
+
+    var body: some View {
+        AppCard(padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .font(.headline)
+                        .foregroundStyle(AppColor.financeGreen)
+                        .frame(width: 36, height: 36)
+                        .background(AppColor.softGreenSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("This month")
+                            .font(.headline)
+                            .foregroundStyle(AppColor.nearBlack)
+                        Text(generatedAt == nil ? "Ready when you are" : "Saved on this device")
+                            .font(.caption)
+                            .foregroundStyle(AppColor.mutedText)
+                    }
+                    Spacer()
+                    if !insightText.isEmpty {
+                        Button {
+                            Task { await generateInsights() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(isGenerating)
+                        .accessibilityLabel("Refresh AI insights")
+                    }
+                }
+
+                if isGenerating {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Generating locally")
+                            .font(.subheadline)
+                            .foregroundStyle(AppColor.mutedText)
+                    }
+                } else if !insightText.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(AIInsightText.lines(insightText).enumerated()), id: \.offset) { _, line in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text("•")
+                                    .foregroundStyle(AppColor.financeGreen)
+                                Text(AIInsightText.markdown(line))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                    .font(.subheadline)
+                    .textSelection(.enabled)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Generate private insights from every payment this month, budgets, portfolio, and this month’s scheduled money.")
+                            .font(.subheadline)
+                            .foregroundStyle(AppColor.mutedText)
+                        Button {
+                            Task { await generateInsights() }
+                        } label: {
+                            Label("Generate insights", systemImage: "sparkles")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .disabled(isGenerating)
+                    }
+                }
+
+                if let generationError {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(generationError)
+                            .font(.footnote)
+                            .foregroundStyle(AppColor.expense)
+                        Button("Try again") {
+                            Task { await generateInsights() }
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .disabled(isGenerating)
+                    }
+                }
+            }
+        }
+        .task(id: cacheKey) {
+            let cached = AIInsightCache.load(userID: store.email, month: summary.month)
+            insightText = cached?.text ?? ""
+            generatedAt = cached?.generatedAt
+        }
+    }
+
+    private var cacheKey: String {
+        "\(store.email.lowercased())|\(summary.month)"
+    }
+
+    @MainActor
+    private func generateInsights() async {
+        guard !isGenerating else { return }
+        isGenerating = true
+        generationError = nil
+        defer { isGenerating = false }
+        do {
+            insightText = try await AIInsightGeneration.generate(store: store, summary: summary)
+            generatedAt = Date()
+        } catch is CancellationError {
+            return
+        } catch {
+            generationError = error.localizedDescription
+        }
     }
 }
 

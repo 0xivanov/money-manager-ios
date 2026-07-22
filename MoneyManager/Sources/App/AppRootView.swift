@@ -45,6 +45,9 @@ struct AppRootView: View {
             store.handlePushEvent(eventType)
             PushEventStore.pending = nil
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            Task { await OnDeviceAIService.shared.unload() }
+        }
     }
 }
 
@@ -102,6 +105,12 @@ private struct AuthenticatedAppView: View {
         }
         .sheet(item: $store.exportShareItem) { item in
             ShareSheet(items: [item.url])
+        }
+        .sheet(item: $store.activeTransactionClarification) { clarification in
+            TransactionClarificationView(store: store, clarification: clarification)
+                .id(clarification.id)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
 }
