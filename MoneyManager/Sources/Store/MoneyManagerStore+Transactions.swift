@@ -210,12 +210,12 @@ extension MoneyManagerStore {
         month requestedMonth: String
     ) {
         categoryClassificationTask?.cancel()
-        let candidates = Array(sourceTransactions.filter { transaction in
-            Self.shouldRequestClarification(
-                for: transaction,
-                dismissedTransactionIDs: dismissedClarificationTransactionIDs
-            )
-        }.prefix(DeterministicTransactionClassifier.maxBatchSize))
+        let candidates = Array(sourceTransactions
+            .filter(Self.shouldAttemptAutomaticClassification)
+            .sorted {
+                Self.hasUserClarification($0) && !Self.hasUserClarification($1)
+            }
+            .prefix(DeterministicTransactionClassifier.maxBatchSize))
         guard !candidates.isEmpty else {
             categoryClassificationTask = nil
             return
@@ -240,7 +240,8 @@ extension MoneyManagerStore {
                     let request = TransactionRequest(
                         type: transaction.type,
                         category: category,
-                        description: transaction.description,
+                        description: Self.legacyUserClarification(in: transaction)
+                            ?? transaction.description,
                         amount: transaction.amount,
                         currency: transaction.currency,
                         occurredAt: DateFormat.dateOnly(transaction.occurredAt),
@@ -287,10 +288,7 @@ extension MoneyManagerStore {
         defer { isSavingTransactionClarification = false }
 
         let transaction = clarification.transaction
-        let description = Self.descriptionWithUserClarification(
-            bankDescription: transaction.description,
-            userNote: trimmedNote
-        )
+        let description = Self.descriptionFromUserClarification(trimmedNote)
         let enriched = Transaction(
             id: transaction.id,
             type: transaction.type,
@@ -375,26 +373,38 @@ extension MoneyManagerStore {
         for transaction: Transaction,
         dismissedTransactionIDs: Set<Int>
     ) -> Bool {
-        guard transaction.category.caseInsensitiveCompare("other") == .orderedSame,
-            transaction.source == "import" || transaction.source == "open_banking",
+        guard shouldAttemptAutomaticClassification(for: transaction),
             !dismissedTransactionIDs.contains(transaction.id)
         else { return false }
 
-        return transaction.description?.range(
-            of: "User clarification:",
-            options: [.caseInsensitive, .diacriticInsensitive]
-        ) == nil
+        return !hasUserClarification(transaction)
     }
 
-    nonisolated static func descriptionWithUserClarification(
-        bankDescription: String?,
-        userNote: String
-    ) -> String {
-        let original = bankDescription?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let note = String(userNote.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
-        return original.isEmpty
-            ? "User clarification: \(note)"
-            : "\(original)\nUser clarification: \(note)"
+    nonisolated static func shouldAttemptAutomaticClassification(
+        for transaction: Transaction
+    ) -> Bool {
+        transaction.category.caseInsensitiveCompare("other") == .orderedSame
+            && (transaction.source == "import" || transaction.source == "open_banking")
+    }
+
+    nonisolated static func hasUserClarification(_ transaction: Transaction) -> Bool {
+        legacyUserClarification(in: transaction) != nil
+    }
+
+    nonisolated static func legacyUserClarification(in transaction: Transaction) -> String? {
+        guard let description = transaction.description,
+            let marker = description.range(
+            of: "User clarification:",
+            options: [.caseInsensitive, .diacriticInsensitive]
+            )
+        else { return nil }
+        let note = String(description[marker.upperBound...])
+        let cleaned = descriptionFromUserClarification(note)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    nonisolated static func descriptionFromUserClarification(_ userNote: String) -> String {
+        String(userNote.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
     }
 
     private func enqueueTransactionClarification(

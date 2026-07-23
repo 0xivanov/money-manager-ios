@@ -214,6 +214,16 @@ final class MoneyManagerTests: XCTestCase {
                 id: 42, type: "expense", category: "other", description: "MYSTERY PLACE",
                 amount: "18.00", currency: "EUR", occurredAt: "2026-07-13"
             ),
+            Transaction(
+                id: 43, type: "expense", category: "other",
+                description: "Sumup *ebag.bg\nUser clarification: Groceries",
+                amount: "39.63", currency: "EUR", occurredAt: "2026-07-22"
+            ),
+            Transaction(
+                id: 44, type: "expense", category: "other",
+                description: "Econt Express Ad\nUser clarification: New SSD",
+                amount: "309.00", currency: "EUR", occurredAt: "2026-07-22"
+            ),
         ]
         let assessments = DeterministicTransactionClassifier.classify(
             transactions,
@@ -225,6 +235,10 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertFalse(assessments[0].needsClarification)
         XCTAssertNil(assessments[1].category)
         XCTAssertTrue(assessments[1].needsClarification)
+        XCTAssertEqual(assessments[2].category, "groceries")
+        XCTAssertFalse(assessments[2].needsClarification)
+        XCTAssertEqual(assessments[3].category, "shopping")
+        XCTAssertFalse(assessments[3].needsClarification)
     }
 
     func testLegacyModelCleanupRemovesOnlyKnownModelDirectories() throws {
@@ -516,13 +530,10 @@ final class MoneyManagerTests: XCTestCase {
         XCTAssertTrue(exposure.contains("across all accounts"))
     }
 
-    func testUserClarificationPreservesOriginalBankDescription() {
+    func testUserClarificationBecomesTheTransactionDescription() {
         XCTAssertEqual(
-            MoneyManagerStore.descriptionWithUserClarification(
-                bankDescription: "CARD PAYMENT TO MYSTERY PLACE",
-                userNote: "Shisha with friends"
-            ),
-            "CARD PAYMENT TO MYSTERY PLACE\nUser clarification: Shisha with friends"
+            MoneyManagerStore.descriptionFromUserClarification("  Shisha with friends  "),
+            "Shisha with friends"
         )
     }
 
@@ -543,6 +554,11 @@ final class MoneyManagerTests: XCTestCase {
             for: transaction,
             dismissedTransactionIDs: []
         ))
+        XCTAssertTrue(MoneyManagerStore.shouldAttemptAutomaticClassification(for: transaction))
+        XCTAssertEqual(
+            MoneyManagerStore.legacyUserClarification(in: transaction),
+            "Shisha with friends"
+        )
     }
 
     func testBrokerTransferCanRequestSpendingClarification() {

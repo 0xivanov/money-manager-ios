@@ -577,7 +577,11 @@ enum DeterministicTransactionClassifier {
         (["housing", "rent"], ["rent", "mortgage", "electricity", "water bill", "heating", "utility"]),
         (["subscriptions"], ["netflix", "spotify", "subscription", "adobe", "apple.com/bill", "google storage"]),
         (["health", "healthcare"], ["pharmacy", "doctor", "dental", "hospital", "clinic"]),
-        (["shopping"], ["amazon", "ikea", "zara", "h&m", "clothing"]),
+        (["shopping"], [
+            "amazon", "ikea", "zara", "h&m", "clothing",
+            "electronics", "computer", "computer parts", "laptop", "desktop",
+            "ssd", "hard drive", "monitor", "keyboard", "graphics card", "gpu",
+        ]),
     ]
     private static let incomeRules: [(aliases: [String], keywords: [String])] = [
         (["salary"], ["salary", "payroll", "wage"]),
@@ -590,13 +594,12 @@ enum DeterministicTransactionClassifier {
         allowedCategoriesByType: [String: [String]]
     ) -> [TransactionCategoryAssessment] {
         transactions.map { transaction in
-            let text = transaction.description?.folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: .current
-            ).lowercased() ?? ""
+            let text = normalizedSearchText(transaction.description ?? "")
             let allowed = allowedCategoriesByType[transaction.type] ?? []
             let rules = transaction.type == TransactionType.income.rawValue ? incomeRules : expenseRules
-            for rule in rules where rule.keywords.contains(where: text.contains) {
+            for rule in rules where searchTerms(for: rule).contains(where: {
+                containsPhrase($0, in: text)
+            }) {
                 if let category = matchingCategory(aliases: rule.aliases, allowed: allowed) {
                     return TransactionCategoryAssessment(
                         transactionID: transaction.id,
@@ -620,6 +623,29 @@ enum DeterministicTransactionClassifier {
     private static func matchingCategory(aliases: [String], allowed: [String]) -> String? {
         let normalizedAliases = Set(aliases.map(normalize))
         return allowed.first { normalizedAliases.contains(normalize($0)) }
+    }
+
+    private static func searchTerms(
+        for rule: (aliases: [String], keywords: [String])
+    ) -> [String] {
+        rule.keywords + rule.aliases.map { $0.replacingOccurrences(of: "_", with: " ") }
+    }
+
+    private static func containsPhrase(_ phrase: String, in normalizedText: String) -> Bool {
+        let normalizedPhrase = normalizedSearchText(phrase)
+        guard !normalizedPhrase.isEmpty else { return false }
+        return " \(normalizedText) ".contains(" \(normalizedPhrase) ")
+    }
+
+    private static func normalizedSearchText(_ value: String) -> String {
+        value.folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: .current
+        )
+        .lowercased()
+        .components(separatedBy: CharacterSet.alphanumerics.inverted)
+        .filter { !$0.isEmpty }
+        .joined(separator: " ")
     }
 
     private static func normalize(_ value: String) -> String {
