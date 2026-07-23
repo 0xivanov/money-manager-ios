@@ -298,7 +298,6 @@ extension MoneyManagerStore {
             currency: transaction.currency,
             occurredAt: transaction.occurredAt,
             source: transaction.source,
-            status: transaction.status,
             excludedFromBudget: transaction.excludedFromBudget,
             scheduleOccurrenceID: transaction.scheduleOccurrenceID
         )

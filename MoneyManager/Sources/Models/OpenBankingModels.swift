@@ -234,7 +234,6 @@ struct OpenBankingTransactionCode: Codable, Equatable {
 struct OpenBankingTransaction: Codable, Identifiable, Equatable {
     let transactionID: String?
     let entryReference: String?
-    let status: String?
     let bookingDate: String?
     let valueDate: String?
     let transactionDate: String?
@@ -276,7 +275,6 @@ struct OpenBankingTransaction: Codable, Identifiable, Equatable {
     var detail: String {
         remittanceInformation?.first(where: { $0 != title && !$0.isEmpty })
             ?? bankTransactionCode?.description
-            ?? status
             ?? "Transaction"
     }
 
@@ -289,7 +287,6 @@ struct OpenBankingTransaction: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case transactionID = "transaction_id"
         case entryReference = "entry_reference"
-        case status
         case bookingDate = "booking_date"
         case valueDate = "value_date"
         case transactionDate = "transaction_date"

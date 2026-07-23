@@ -26,7 +26,6 @@ struct Transaction: Codable, Identifiable, Equatable {
     let currency: String
     let occurredAt: String
     let source: String?
-    let status: String?
     let excludedFromBudget: Bool?
     let scheduleOccurrenceID: Int?
 
@@ -39,7 +38,6 @@ struct Transaction: Codable, Identifiable, Equatable {
         currency: String,
         occurredAt: String,
         source: String? = nil,
-        status: String? = nil,
         excludedFromBudget: Bool? = nil,
         scheduleOccurrenceID: Int? = nil
     ) {
@@ -51,7 +49,6 @@ struct Transaction: Codable, Identifiable, Equatable {
         self.currency = currency
         self.occurredAt = occurredAt
         self.source = source
-        self.status = status
         self.excludedFromBudget = excludedFromBudget
         self.scheduleOccurrenceID = scheduleOccurrenceID
     }
@@ -65,7 +62,6 @@ struct Transaction: Codable, Identifiable, Equatable {
         case currency
         case occurredAt = "occurred_at"
         case source
-        case status
         case excludedFromBudget = "excluded_from_budget"
         case scheduleOccurrenceID = "schedule_occurrence_id"
     }

@@ -143,7 +143,7 @@ private struct OpenBankingConsentView: View {
                 OpenBankingPermissionCard(
                     icon: "list.bullet.rectangle.portrait",
                     title: "Read transaction history",
-                    detail: "Merchant, amount, date, and status"
+                    detail: "Merchant, amount, and date"
                 )
 
                 Label("Money Manager cannot move money or make payments.", systemImage: "lock.shield.fill")

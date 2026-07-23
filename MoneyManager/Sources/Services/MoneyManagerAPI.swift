@@ -208,7 +208,6 @@ struct MoneyManagerAPI {
         var queryItems = [
             URLQueryItem(name: "date_from", value: dateFrom),
             URLQueryItem(name: "date_to", value: dateTo),
-            URLQueryItem(name: "transaction_status", value: "BOOK"),
             URLQueryItem(name: "strategy", value: "default")
         ]
         if let continuationKey, !continuationKey.isEmpty {

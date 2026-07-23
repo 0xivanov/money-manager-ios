@@ -108,7 +108,6 @@ import SwiftUI
                         OpenBankingTransaction(
                             transactionID: "preview-1",
                             entryReference: nil,
-                            status: "BOOK",
                             bookingDate: "2026-07-13",
                             valueDate: "2026-07-13",
                             transactionDate: "2026-07-13",
@@ -123,7 +122,6 @@ import SwiftUI
                         OpenBankingTransaction(
                             transactionID: "preview-2",
                             entryReference: nil,
-                            status: "BOOK",
                             bookingDate: "2026-07-10",
                             valueDate: "2026-07-10",
                             transactionDate: "2026-07-10",
@@ -138,7 +136,6 @@ import SwiftUI
                         OpenBankingTransaction(
                             transactionID: "preview-3",
                             entryReference: nil,
-                            status: "BOOK",
                             bookingDate: "2026-07-09",
                             valueDate: "2026-07-09",
                             transactionDate: "2026-07-09",

@@ -227,7 +227,7 @@ final class MoneyManagerTests: XCTestCase {
         ]
         let assessments = DeterministicTransactionClassifier.classify(
             transactions,
-            allowedCategoriesByType: ["expense": ["groceries", "dining_out", "other"]]
+            allowedCategoriesByType: ["expense": ["groceries", "dining_out", "shopping", "other"]]
         )
 
         XCTAssertEqual(assessments[0].category, "groceries")
@@ -546,8 +546,7 @@ final class MoneyManagerTests: XCTestCase {
             amount: "18.00",
             currency: "EUR",
             occurredAt: "2026-07-18",
-            source: "open_banking",
-            status: "booked"
+            source: "open_banking"
         )
 
         XCTAssertFalse(MoneyManagerStore.shouldRequestClarification(
